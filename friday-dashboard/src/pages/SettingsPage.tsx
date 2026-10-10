@@ -5,7 +5,7 @@ import { Settings as SettingsIcon, Radio, Wifi, Save } from 'lucide-react';
 export function SettingsPage() {
   const { toast } = useApp();
 
-  const [frequency, setFrequency] = useState('433.0');
+  const [frequency, setFrequency] = useState('868.0');
   const [bandwidth, setBandwidth] = useState('125.0');
   const [sf, setSf] = useState('7');
   const [cr, setCr] = useState('5');

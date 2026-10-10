@@ -74,7 +74,7 @@ export function NetworkTopology() {
           <div className="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse" />
           <span className="font-bold text-[#F5F5F5] text-sm tracking-wide">Bidirectional RF Relay Mesh</span>
           <span className="badge badge-neutral font-mono text-[11px] px-2 py-0.5">
-            433.0 MHz LoRa SF7
+            868.0 MHz LoRa SF7
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4 text-[#858585] font-mono text-xs">
@@ -164,7 +164,7 @@ export function NetworkTopology() {
 
           {/* Downlink Label */}
           <text x="315" y="196" textAnchor="middle" fill="#757575" fontSize="8.5" fontWeight="600" fontFamily="var(--font-mono)">
-            433.0 MHz · SF7 · BW 125 kHz
+            868.0 MHz · SF7 · BW 125 kHz
           </text>
 
           {/* ═══════════════ LINK 2: DRONE RELAY ⇄ BASE C ═══════════════ */}
@@ -214,7 +214,7 @@ export function NetworkTopology() {
 
           {/* Downlink Label */}
           <text x="647" y="196" textAnchor="middle" fill="#757575" fontSize="8.5" fontWeight="600" fontFamily="var(--font-mono)">
-            433.0 MHz · SF7 · BW 125 kHz
+            868.0 MHz · SF7 · BW 125 kHz
           </text>
 
           {/* ═══════════════ NODE 1: BASE STATION A ═══════════════ */}
@@ -266,7 +266,7 @@ export function NetworkTopology() {
               SYNC: 0xFA
             </text>
             <text x="66" y="27" textAnchor="end" fill="#757575" fontSize="9.5" fontWeight="500" fontFamily="var(--font-mono)">
-              433.0 MHz
+              868.0 MHz
             </text>
           </g>
 
@@ -404,7 +404,7 @@ export function NetworkTopology() {
           </span>
         </div>
         <div className="font-mono text-[11px] text-[#666]">
-          RF Carrier: 433.000 MHz · Dual SX1262 SPI Transceivers
+          RF Carrier: 868.000 MHz · Dual SX1262 SPI Transceivers
         </div>
       </div>
     </div>

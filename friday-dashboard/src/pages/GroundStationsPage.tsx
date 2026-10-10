@@ -131,7 +131,7 @@ export function GroundStationsPage() {
             </div>
             <div className="text-right font-mono text-xs text-[#A0A0A0]">
               <div>Sync: <span className="text-[#FF4D4D] font-bold">0xFA</span></div>
-              <div>Freq: 433.0 MHz</div>
+              <div>Freq: 868.0 MHz</div>
             </div>
           </div>
 
@@ -285,7 +285,7 @@ export function GroundStationsPage() {
             </div>
             <div className="text-right font-mono text-xs text-[#A0A0A0]">
               <div>Sync: <span className="text-[#FF4D4D] font-bold">0xFF</span></div>
-              <div>Freq: 433.0 MHz</div>
+              <div>Freq: 868.0 MHz</div>
             </div>
           </div>
 
@@ -441,7 +441,7 @@ export function GroundStationsPage() {
 
           <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-[#161618] p-3 rounded border border-[rgba(255,255,255,0.12)]">
             <div>Origin: <span className="font-bold text-white">{emergencyModal.nodeId}</span></div>
-            <div>Frequency: <span className="font-bold text-white">433.0 MHz</span></div>
+            <div>Frequency: <span className="font-bold text-white">868.0 MHz</span></div>
             <div>Sync Word: <span className="font-bold text-[#FF4D4D]">{emergencyModal.nodeId === 'BASE_A' ? '0xFA' : '0xFF'}</span></div>
             <div>Relay Path: <span className="font-bold text-white">via DRONE_RELAY</span></div>
           </div>

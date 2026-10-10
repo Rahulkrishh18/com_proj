@@ -189,7 +189,7 @@ export function Sidebar() {
         </div>
         <div style={{ overflow: 'hidden', minWidth: 0 }}>
           <div style={{ fontSize: '11px', fontWeight: 600, fontFamily: 'var(--font-mono)', color: '#F5F5F5', lineHeight: 1.2 }}>
-            433.0 MHz LoRa
+            868.0 MHz LoRa
           </div>
           <div style={{ fontSize: '9.5px', fontFamily: 'var(--font-mono)', color: '#858585', marginTop: '2px' }}>
             SX1262 · SF7 · 125 kHz

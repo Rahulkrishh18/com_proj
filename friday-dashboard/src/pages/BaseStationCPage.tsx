@@ -193,7 +193,7 @@ export function BaseStationCPage({ activeTab = 'messages' }: BaseStationCPagePro
             flexShrink: 0,
           }}>
             <RadioTower style={{ width: '13px', height: '13px', color: '#858585' }} />
-            <span style={{ fontWeight: 600, color: '#F5F5F5' }}>433.0 MHz</span>
+            <span style={{ fontWeight: 600, color: '#F5F5F5' }}>868.0 MHz</span>
             <span style={{ color: '#555' }}>·</span>
             <span>SX1262</span>
             <span style={{ color: '#555' }}>·</span>

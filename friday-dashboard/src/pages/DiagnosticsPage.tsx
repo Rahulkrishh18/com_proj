@@ -5,7 +5,7 @@ import { Cpu, Radio, Zap, Save, RefreshCw } from 'lucide-react';
 export function DiagnosticsPage() {
   const { toast } = useApp();
 
-  const [frequency, setFrequency] = useState('433.000 MHz');
+  const [frequency, setFrequency] = useState('868.000 MHz');
   const [bandwidth, setBandwidth] = useState('125.0 kHz');
   const [sf, setSf] = useState('SF7');
   const [cr, setCr] = useState('4/5');
@@ -18,7 +18,7 @@ export function DiagnosticsPage() {
   }
 
   function handleReset() {
-    setFrequency('433.000 MHz');
+    setFrequency('868.000 MHz');
     setBandwidth('125.0 kHz');
     setSf('SF7');
     setCr('4/5');
@@ -103,7 +103,7 @@ export function DiagnosticsPage() {
 
               <div className="p-3 bg-[#181818] rounded border border-[#303030] space-y-1.5">
                 <div className="text-[11px] font-bold text-[#F5F5F5] font-sans">US3242 Radio</div>
-                <div className="flex justify-between"><span className="text-[#858585]">Frequency</span><span className="text-[#B8B8B8]">433.0 MHz</span></div>
+                <div className="flex justify-between"><span className="text-[#858585]">Frequency</span><span className="text-[#B8B8B8]">868.0 MHz</span></div>
                 <div className="flex justify-between"><span className="text-[#858585]">Bandwidth</span><span className="text-[#B8B8B8]">125.0 kHz</span></div>
                 <div className="flex justify-between"><span className="text-[#858585]">Spreading Factor</span><span className="text-[#B8B8B8]">SF7</span></div>
                 <div className="flex justify-between"><span className="text-[#858585]">Coding Rate</span><span className="text-[#B8B8B8]">4/5</span></div>

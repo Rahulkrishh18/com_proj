@@ -21,7 +21,7 @@ export function TopologyPage() {
         </div>
         <div className="flex items-center gap-2">
           <span className="px-2.5 py-1 text-xs font-mono font-bold bg-[#800000]/20 text-[#FF8080] border border-[#800000]/60 rounded">
-            433.0 MHz (SX1262)
+            868.0 MHz (SX1262)
           </span>
         </div>
       </div>

@@ -164,7 +164,7 @@ export function BaseStationAPage({ activeTab = 'messages' }: BaseStationAPagePro
             flexShrink: 0,
           }}>
             <RadioTower style={{ width: '13px', height: '13px', color: '#858585' }} />
-            <span style={{ fontWeight: 600, color: '#F5F5F5' }}>433.0 MHz</span>
+            <span style={{ fontWeight: 600, color: '#F5F5F5' }}>868.0 MHz</span>
             <span style={{ color: '#555' }}>·</span>
             <span>SX1262</span>
             <span style={{ color: '#555' }}>·</span>
@@ -233,7 +233,7 @@ export function BaseStationAPage({ activeTab = 'messages' }: BaseStationAPagePro
                 <div className="card-subtitle">LoRa → Drone Relay → Base Station C</div>
               </div>
             </div>
-            <span className="badge badge-burgundy" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>433.0 MHz</span>
+            <span className="badge badge-burgundy" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>868.0 MHz</span>
           </div>
 
           <div className="card-body">
@@ -280,7 +280,7 @@ export function BaseStationAPage({ activeTab = 'messages' }: BaseStationAPagePro
                   value={msg}
                   onChange={e => setMsg(e.target.value)}
                   maxLength={180}
-                  placeholder="Enter field message to broadcast across 433 MHz LoRa channel..."
+                  placeholder="Enter field message to broadcast across 868 MHz LoRa channel..."
                   className="input"
                   style={{ resize: 'none' }}
                 />

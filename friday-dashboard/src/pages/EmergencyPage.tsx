@@ -79,7 +79,7 @@ export function EmergencyPage() {
               <AlertOctagon style={{ width: '16px', height: '16px', color: '#FF6B6B' }} />
               <div>
                 <div className="card-title">Emergency Preset Dispatcher</div>
-                <div className="card-subtitle">Transmit pre-defined emergency alerts over the 433 MHz LoRa network</div>
+                <div className="card-subtitle">Transmit pre-defined emergency alerts over the 868 MHz LoRa network</div>
               </div>
             </div>
           </div>
@@ -281,7 +281,7 @@ export function EmergencyPage() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '14px', color: '#F5F5F5' }}>
             <p style={{ lineHeight: 1.6 }}>
-              Broadcast <strong style={{ color: '#FFAAAA' }}>{selectedAction.label}</strong> over the 433 MHz LoRa channel?
+              Broadcast <strong style={{ color: '#FFAAAA' }}>{selectedAction.label}</strong> over the 868 MHz LoRa channel?
             </p>
             <div style={{ padding: '14px 16px', background: 'var(--c-well)', border: '1px solid var(--c-border)', borderRadius: '8px', fontSize: '12.5px', color: '#B8B8B8', lineHeight: 1.6 }}>
               {selectedAction.message}

@@ -126,7 +126,7 @@ export function OverviewPage() {
           <div className="card-header">
             <div>
               <div className="card-title">RF Signal History</div>
-              <div className="card-subtitle">433.0 MHz — Last 30 telemetry points</div>
+              <div className="card-subtitle">868.0 MHz — Last 30 telemetry points</div>
             </div>
             <div style={{ display: 'flex', gap: '6px' }}>
               <span className="badge badge-burgundy" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>RSSI</span>
@@ -202,7 +202,7 @@ export function OverviewPage() {
           <div className="card-header">
             <div>
               <div className="card-title">Quick Transmit</div>
-              <div className="card-subtitle">433.0 MHz LoRa Channel</div>
+              <div className="card-subtitle">868.0 MHz LoRa Channel</div>
             </div>
           </div>
           <div className="card-body">
@@ -238,7 +238,7 @@ export function OverviewPage() {
                 <textarea
                   className="input"
                   rows={3}
-                  placeholder="Broadcast payload over 433 MHz..."
+                  placeholder="Broadcast payload over 868 MHz..."
                   value={composeMsg}
                   onChange={e => setComposeMsg(e.target.value)}
                   maxLength={240}
