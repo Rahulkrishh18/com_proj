@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ChevronRight, Clock, RefreshCw, Activity, WifiOff, Wifi } from 'lucide-react';
+import { ChevronRight, Clock, Activity, LogOut } from 'lucide-react';
 
 const PAGE_META: Record<string, { title: string; breadcrumb: string }> = {
   station_a:   { title: 'Base Station A',       breadcrumb: 'Station Control' },
@@ -23,8 +23,8 @@ function formatUptime(seconds: number): string {
 }
 
 export function Header() {
-  const { state, dispatch } = useApp();
-  const { dashboard, page } = state;
+  const { state } = useApp();
+  const { page } = state;
 
   const [now, setNow] = useState(new Date());
   const [uptime, setUptime] = useState(14820);
@@ -57,36 +57,41 @@ export function Header() {
 
       {/* Right: Status items */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        {/* Demo / Live indicator */}
-        {dashboard.isConnectedToHardware ? (
+        {/* Active Authenticated Station Badge */}
+        {state.authenticatedStation && (
           <div
-            className="hide-mobile"
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '5px 11px', borderRadius: '99px',
-              background: 'rgba(34, 197, 94, 0.08)',
-              border: '1px solid rgba(34, 197, 94, 0.25)',
-              fontSize: '11px', fontWeight: 600, color: '#4ADE80',
+              padding: '5px 12px', borderRadius: '6px',
+              background: state.authenticatedStation === 'BASE_A' ? 'rgba(192, 0, 0, 0.15)' : 'rgba(128, 0, 0, 0.25)',
+              border: '1px solid',
+              borderColor: state.authenticatedStation === 'BASE_A' ? '#C00000' : '#800000',
+              fontSize: '11px', fontWeight: 700, fontFamily: 'var(--font-mono)',
+              color: state.authenticatedStation === 'BASE_A' ? '#FFAAAA' : '#FFCCCC',
             }}
           >
-            <Wifi style={{ width: '12px', height: '12px' }} />
-            LIVE
-          </div>
-        ) : (
-          <div
-            className="hide-mobile"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '5px 11px', borderRadius: '99px',
-              background: 'rgba(128, 0, 0, 0.12)',
-              border: '1px solid rgba(192, 0, 0, 0.25)',
-              fontSize: '11px', fontWeight: 600, color: '#FFAAAA',
-            }}
-          >
-            <WifiOff style={{ width: '12px', height: '12px' }} />
-            DEMO
+            <span className="status-dot online" />
+            {state.authenticatedStation === 'BASE_A' ? 'STATION A (0xFA)' : 'STATION C (0xFF)'}
           </div>
         )}
+
+        {/* Cloud Realtime Status */}
+        <div
+          className="hide-mobile"
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '5px 11px', borderRadius: '99px',
+            background: state.isCloudConnected ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+            border: '1px solid',
+            borderColor: state.isCloudConnected ? 'rgba(34, 197, 94, 0.25)' : 'rgba(245, 158, 11, 0.25)',
+            fontSize: '11px', fontWeight: 600,
+            color: state.isCloudConnected ? '#4ADE80' : '#FBBF24',
+          }}
+          title={state.isCloudConnected ? 'Connected to Supabase Realtime' : 'Running in local mode'}
+        >
+          <span className={`status-dot ${state.isCloudConnected ? 'online' : 'busy'}`} />
+          {state.isCloudConnected ? 'CLOUD LIVE' : 'OFFLINE'}
+        </div>
 
         {/* Uptime */}
         <div
@@ -118,24 +123,27 @@ export function Header() {
           </span>
         </div>
 
-        {/* Refresh */}
-        <button
-          type="button"
-          onClick={() => dispatch({ type: 'REFRESH_TELEMETRY' })}
-          title="Refresh Telemetry"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '34px', height: '34px',
-            background: 'var(--c-well)', border: '1px solid var(--c-border)',
-            borderRadius: '8px', cursor: 'pointer', color: '#858585',
-            transition: 'all 120ms ease',
-            flexShrink: 0,
-          }}
-          onMouseEnter={e => { (e.target as HTMLElement).closest('button')!.style.color = '#F5F5F5'; }}
-          onMouseLeave={e => { (e.target as HTMLElement).closest('button')!.style.color = '#858585'; }}
-        >
-          <RefreshCw style={{ width: '14px', height: '14px' }} />
-        </button>
+        {/* Logout Button */}
+        {state.authenticatedStation && (
+          <button
+            type="button"
+            onClick={useApp().logout}
+            title="Logout of Station"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '6px 12px',
+              background: 'var(--c-well)', border: '1px solid var(--c-border)',
+              borderRadius: '8px', cursor: 'pointer', color: '#B8B8B8',
+              fontSize: '12px', fontWeight: 600,
+              transition: 'all 120ms ease',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#C00000'; (e.currentTarget as HTMLElement).style.color = '#FF6B6B'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--c-border)'; (e.currentTarget as HTMLElement).style.color = '#B8B8B8'; }}
+          >
+            <LogOut style={{ width: '13px', height: '13px' }} />
+            <span>Logout</span>
+          </button>
+        )}
       </div>
     </header>
   );

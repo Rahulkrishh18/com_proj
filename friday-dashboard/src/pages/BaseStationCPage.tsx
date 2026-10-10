@@ -7,20 +7,22 @@ import {
   RadioTower, Send, AlertOctagon, HeartPulse, CheckCircle2,
   BarChart2, Search, Clock, Waves, Mountain, Wind, ShieldCheck,
   Inbox, CornerDownRight, Compass, Activity, RotateCcw, FileText,
-  MessageSquare, List, MoreVertical, Cpu, ChevronRight
+  MessageSquare, List, MoreVertical, Cpu, ChevronRight, ShieldAlert, PackagePlus
 } from 'lucide-react';
 
 const DIRECTIONS = ['South-West', 'West', 'North-West', 'South', 'North', 'South-East', 'East', 'North-East'] as const;
 
 const QUICK_PRESETS = [
   { label: 'ACK & Rescue ETA', text: 'ACK confirmed. Emergency rescue unit mobilized, ETA 12 mins. Stand by on current channel.', category: 'ack' as EventCategory },
+  { label: 'Need Backup', text: 'COMMAND DIRECTIVE: Urgent Backup Requested — Tactical reinforcements and heavy equipment mobilized to Sector 4.', category: 'message' as EventCategory },
+  { label: 'Medical Supplies', text: 'LOGISTICS DIRECTIVE: Emergency Medical Supplies Dispatched — First aid, plasma, and trauma kits en route.', category: 'medical' as EventCategory },
   { label: 'Stand By On Channel', text: 'Incoming packet logged at Command HQ. Maintain radio discipline. Stand by for orders.', category: 'message' as EventCategory },
   { label: 'Medevac En Route', text: 'Medevac dispatched with paramedic triage team. Clear landing coordinate zone.', category: 'medical' as EventCategory },
   { label: 'Sector All Clear', text: 'Sector hazard cleared and verified. All units authorized to resume normal operations.', category: 'all_clear' as EventCategory },
 ];
 
 export function BaseStationCPage() {
-  const { state, transmit, toast } = useApp();
+  const { state, transmit, acknowledge, toast } = useApp();
   const { stations, events, telemetryHistory } = state.dashboard;
   const stationC = stations.BASE_C;
   const telemetry = stationC.telemetry;
@@ -54,36 +56,39 @@ export function BaseStationCPage() {
     [stationEvents, searchTerm, categoryFilter]
   );
 
-  const handleSendReply = (e: React.FormEvent) => {
+  const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyMsg.trim()) return;
     setIsSending(true);
     setTxFeedback({ status: 'pending', text: 'Queueing response packet to SX1262 LoRa module (0xFF)...' });
-    setTimeout(() => {
-      transmit('BASE_C', 'BASE_A', category, replyMsg.trim(), direction);
-      setIsSending(false);
+    const res = await transmit('BASE_C', 'BASE_A', category, replyMsg.trim(), direction);
+    setIsSending(false);
+    if (res.success) {
       setTxFeedback({ status: 'success', text: `Response transmitted [${direction}] — Forwarded by Drone Relay` });
       setReplyMsg('');
-    }, 450);
+    } else {
+      setTxFeedback({ status: 'idle', text: '' });
+    }
   };
 
-  const handleQuickAck = () => {
+  const handleQuickAck = async () => {
     setIsSending(true);
     const ackPayload = 'ACK: SOS confirmed by Command HQ. Rescue Delta Team dispatched to Sector 4.';
     setTxFeedback({ status: 'pending', text: 'Transmitting 1-Click Verified Command ACK...' });
-    setTimeout(() => {
-      transmit('BASE_C', 'BASE_A', 'ack', ackPayload, 'South-West');
-      setIsSending(false);
-      setTxFeedback({ status: 'success', text: 'Command ACK Confirmed: Rescue Delta deployment logged.' });
-      toast('Command ACK transmitted to Base Station A via Drone', 'success');
-    }, 400);
+    if (latestIncoming?.id) {
+      await acknowledge(latestIncoming.id);
+    }
+    await transmit('BASE_C', 'BASE_A', 'ack', ackPayload, 'South-West');
+    setIsSending(false);
+    setTxFeedback({ status: 'success', text: 'Command ACK Confirmed: Rescue Delta deployment logged.' });
+    toast('Command ACK transmitted to Base Station A via Drone', 'success');
   };
 
   const requestEmergency = (type: EventCategory, title: string, description: string, isSimulation = false) => {
     setConfirmModal({ open: true, type, title, description, isSimulation });
   };
 
-  const executeEmergency = () => {
+  const executeEmergency = async () => {
     const { type, isSimulation } = confirmModal;
     setConfirmModal(prev => ({ ...prev, open: false }));
     let payload = '';
@@ -94,7 +99,8 @@ export function BaseStationCPage() {
     else if (type === 'cap_earthquake') payload = 'SIMULATION [CAP]: Structural assessment team deployed.';
     else if (type === 'cap_landslide') payload = 'SIMULATION [CAP]: Route 9 blocked. Diverting rescue units.';
     else if (type === 'cap_tsunami') payload = 'SIMULATION [CAP]: Harbor clearance sirens active.';
-    transmit('BASE_C', 'BASE_A', type, payload, direction);
+    else if (type === 'message') payload = 'COMMAND DIRECTIVE: Urgent Backup Requested — Tactical reinforcements deployed.';
+    await transmit('BASE_C', 'BASE_A', type, payload, direction);
     toast(`${isSimulation ? 'Simulation' : 'Command Alert'} dispatched`, type === 'sos' ? 'critical' : 'success');
   };
 
@@ -504,6 +510,44 @@ export function BaseStationCPage() {
                     <span className="badge badge-burgundy" style={{ fontSize: '9px', padding: '2px 6px' }}>HIGH PRIORITY</span>
                   </div>
                   <div style={{ fontSize: '11.5px', color: '#B8B8B8' }}>Dispatch Air Ambulance & Paramedics</div>
+                </div>
+                <ChevronRight style={{ width: '16px', height: '16px', color: '#858585', flexShrink: 0 }} />
+              </button>
+
+              {/* Need Backup */}
+              <button
+                type="button"
+                onClick={() => requestEmergency('message', 'Tactical Backup Order', 'Dispatch tactical backup reinforcements to Sector Alpha.')}
+                className="emergency-directive-card medical"
+              >
+                <div className="directive-icon-box medical">
+                  <ShieldAlert style={{ width: '20px', height: '20px' }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#FF9999' }}>Need Backup</span>
+                    <span className="badge badge-burgundy" style={{ fontSize: '9px', padding: '2px 6px' }}>REINFORCEMENTS</span>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#B8B8B8' }}>Deploy Ground Tactical Support Team</div>
+                </div>
+                <ChevronRight style={{ width: '16px', height: '16px', color: '#858585', flexShrink: 0 }} />
+              </button>
+
+              {/* Medical Supplies */}
+              <button
+                type="button"
+                onClick={() => requestEmergency('medical', 'Medical Supplies Dispatch', 'Mobilize emergency trauma kits, plasma, and first aid packages.')}
+                className="emergency-directive-card medical"
+              >
+                <div className="directive-icon-box medical">
+                  <PackagePlus style={{ width: '20px', height: '20px' }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#FF9999' }}>Medical Supplies</span>
+                    <span className="badge badge-burgundy" style={{ fontSize: '9px', padding: '2px 6px' }}>LOGISTICS</span>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#B8B8B8' }}>Dispatch Trauma Kits & Field Plasma</div>
                 </div>
                 <ChevronRight style={{ width: '16px', height: '16px', color: '#858585', flexShrink: 0 }} />
               </button>

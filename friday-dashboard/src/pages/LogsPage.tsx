@@ -45,12 +45,19 @@ export function LogsPage() {
       {/* Page Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
         <div>
-          <h1 className="page-title">Communications Log</h1>
-          <p className="page-description">Complete historical packet audit across all ground and aerial nodes</p>
+          <h1 className="page-title">Communications Log & Ledger</h1>
+          <p className="page-description">Persistent multi-station packet audit synchronized across Supabase PostgreSQL</p>
         </div>
-        <span className="badge badge-burgundy" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', flexShrink: 0, marginTop: '4px' }}>
-          DEMO MODE
-        </span>
+        {state.isCloudConnected ? (
+          <span className="badge badge-ok" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', flexShrink: 0, marginTop: '4px' }}>
+            <span className="status-dot online" />
+            CLOUD SYNCED (POSTGRESQL)
+          </span>
+        ) : (
+          <span className="badge badge-burgundy" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', flexShrink: 0, marginTop: '4px' }}>
+            LOCAL BUFFER
+          </span>
+        )}
       </div>
 
       {/* Filter Toolbar */}
@@ -112,8 +119,8 @@ export function LogsPage() {
                 <th className="col-dst">Destination</th>
                 <th className="col-cat">Category</th>
                 <th className="col-msg">Message</th>
-                <th className="col-rssi">RSSI</th>
-                <th className="col-status">Status</th>
+                <th>Transport</th>
+                <th>ACK State</th>
               </tr>
             </thead>
             <tbody>
@@ -126,13 +133,14 @@ export function LogsPage() {
               ) : (
                 filtered.map((ev, idx) => {
                   const catColor = CATEGORY_COLORS[ev.category];
+                  const isAcked = ev.status === 'ack_received' || ev.category === 'ack';
                   return (
                     <tr key={ev.id}>
                       <td style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#858585', whiteSpace: 'nowrap' }}>
                         {formatTimestamp(ev.timestamp)}
                       </td>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: '11.5px', color: '#858585', whiteSpace: 'nowrap' }}>
-                        PKT-{98404 + idx}
+                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#858585', whiteSpace: 'nowrap' }}>
+                        {ev.id.length > 12 ? `PKT-${ev.id.slice(0, 8)}` : `PKT-${98404 + idx}`}
                       </td>
                       <td style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                         {nodeLabel(ev.sourceNodeId)}
@@ -154,14 +162,27 @@ export function LogsPage() {
                       <td style={{ fontSize: '13px', color: '#F5F5F5', lineHeight: 1.5, maxWidth: '340px' }}>
                         {ev.message}
                       </td>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 600, color: '#C00000', whiteSpace: 'nowrap' }}>
-                        {ev.rssiDbm ? `${ev.rssiDbm} dBm` : '−75.3 dBm'}
+                      <td>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          padding: '2px 7px', borderRadius: '4px', fontSize: '10.5px',
+                          background: 'rgba(56, 189, 248, 0.1)', color: '#38BDF8', border: '1px solid rgba(56, 189, 248, 0.25)',
+                          fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                        }}>
+                          Cloud Delivered
+                        </span>
                       </td>
                       <td>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 600, color: '#4ADE80', whiteSpace: 'nowrap' }}>
-                          <CheckCircle2 style={{ width: '12px', height: '12px' }} />
-                          Delivered
-                        </span>
+                        {isAcked ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', fontWeight: 600, color: '#4ADE80', whiteSpace: 'nowrap' }}>
+                            <CheckCircle2 style={{ width: '13px', height: '13px' }} />
+                            ACK Confirmed
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: '#858585', whiteSpace: 'nowrap' }}>
+                            Unacknowledged
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

@@ -1,0 +1,11 @@
+{
+  "name": "friday-emergency-mission-control",
+  "version": "2.4.0",
+  "private": true,
+  "description": "F.R.I.D.A.Y. — Flying Relay Infrastructure for Dynamic Area Mission Control",
+  "scripts": {
+    "dev": "npm --prefix friday-dashboard run dev",
+    "build": "npm --prefix friday-dashboard run build",
+    "preview": "npm --prefix friday-dashboard run preview"
+  }
+}

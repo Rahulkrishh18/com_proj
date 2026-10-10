@@ -2,6 +2,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { Toaster } from './components/ui/Toaster';
+import { LoginPage } from './components/auth/LoginPage';
 
 // Station Dashboards
 import { BaseStationAPage } from './pages/BaseStationAPage';
@@ -17,9 +18,19 @@ import { LogsPage } from './pages/LogsPage';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
-function DashboardContent() {
-  const { state } = useApp();
-  const { page } = state;
+function MainApp() {
+  const { state, login } = useApp();
+  const { authenticatedStation, page } = state;
+
+  // Protect all views behind Station Authentication
+  if (!authenticatedStation) {
+    return (
+      <>
+        <LoginPage onLoginSuccess={login} />
+        <Toaster />
+      </>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -47,7 +58,7 @@ function DashboardContent() {
 export default function App() {
   return (
     <AppProvider>
-      <DashboardContent />
+      <MainApp />
     </AppProvider>
   );
 }

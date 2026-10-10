@@ -46,35 +46,50 @@ export function BaseStationAPage() {
     [stationEvents, searchTerm, categoryFilter]
   );
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!msg.trim()) return;
     setIsSending(true);
     setTxFeedback({ status: 'pending', text: 'Queueing LoRa packet to SX1262...' });
-    setTimeout(() => {
-      transmit('BASE_A', 'BASE_C', category, msg.trim(), direction);
-      setIsSending(false);
+    const res = await transmit('BASE_A', 'BASE_C', category, msg.trim(), direction);
+    setIsSending(false);
+    if (res.success) {
       setTxFeedback({ status: 'success', text: `Packet transmitted [${direction}] — Forwarded by Drone Relay` });
       setMsg('');
-    }, 450);
+    } else {
+      setTxFeedback({ status: 'idle', text: '' });
+    }
   };
 
   const requestEmergency = (type: EventCategory, title: string, description: string, isSimulation = false) => {
     setConfirmModal({ open: true, type, title, description, isSimulation });
   };
 
-  const executeEmergency = () => {
+  const executeEmergency = async () => {
     const { type, isSimulation } = confirmModal;
     setConfirmModal(prev => ({ ...prev, open: false }));
     let payload = '';
+    let disasterType: string | undefined = undefined;
     if (type === 'sos') payload = 'SOS — Flash Flood breach at Sector 4 perimeter. Immediate rescue required.';
     else if (type === 'medical') payload = 'Medical Priority: 3 casualties stabilized. Requesting paramedic triage.';
     else if (type === 'all_clear') payload = 'All Clear: Incident resolved. Sector perimeter stabilized.';
-    else if (type === 'cap_flood') payload = 'Flood Alert — River basin overflow';
-    else if (type === 'cap_earthquake') payload = 'Earthquake — M6.8 Richter Scale';
-    else if (type === 'cap_landslide') payload = 'Landslide — Hillside instability';
-    else if (type === 'cap_tsunami') payload = 'Tsunami — Coastal inundation';
-    transmit('BASE_A', 'BASE_C', type, payload, direction);
+    else if (type === 'cap_flood') {
+      payload = 'Flood Alert — River basin overflow';
+      disasterType = 'FLOOD';
+    }
+    else if (type === 'cap_earthquake') {
+      payload = 'Earthquake — M6.8 Richter Scale';
+      disasterType = 'EARTHQUAKE';
+    }
+    else if (type === 'cap_landslide') {
+      payload = 'Landslide — Hillside instability';
+      disasterType = 'LANDSLIDE';
+    }
+    else if (type === 'cap_tsunami') {
+      payload = 'Tsunami — Coastal inundation';
+      disasterType = 'TSUNAMI';
+    }
+    await transmit('BASE_A', 'BASE_C', type, payload, direction, disasterType);
     toast(`${isSimulation ? 'Simulation' : 'Emergency'} broadcast dispatched`, type === 'sos' ? 'critical' : 'success');
   };
 
