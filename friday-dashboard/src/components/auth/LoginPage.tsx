@@ -122,6 +122,15 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
     }
   }
 
+  // Detect matching station from password prefix
+  const detectedStation = (() => {
+    const p = password.trim().toUpperCase();
+    if (p.startsWith('FRIDAY-CHARLIE-') || p.startsWith('CHARLIE-')) return 'BASE_C';
+    if (p.startsWith('FRIDAY-ALPHA-') || p.startsWith('ALPHA-')) return 'BASE_A';
+    if (p.startsWith('FRIDAY-RELAY-') || p.startsWith('RELAY-')) return 'DRONE_RELAY';
+    return null;
+  })();
+
   // Handle Login submission
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -130,18 +139,25 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
       return;
     }
 
+    // Auto-align station if password prefix clearly indicates another station
+    let stationToVerify = selectedStation;
+    if (detectedStation && detectedStation !== selectedStation) {
+      stationToVerify = detectedStation;
+      setSelectedStation(detectedStation);
+    }
+
     setIsAuthenticating(true);
     setAuthError(null);
 
-    const res = await verifyStationLoginDB(selectedStation, password);
+    const res = await verifyStationLoginDB(stationToVerify, password);
     setIsAuthenticating(false);
 
     if (!res.success) {
       setAuthError(res.error || 'Authentication failed. Please verify credentials.');
     } else {
       // Save authenticated station in session
-      sessionStorage.setItem('friday_authenticated_station', selectedStation);
-      onLoginSuccess(selectedStation);
+      sessionStorage.setItem('friday_authenticated_station', stationToVerify);
+      onLoginSuccess(stationToVerify);
     }
   }
 
@@ -618,6 +634,34 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
                     {showPassword ? <EyeOff style={{ width: '16px', height: '16px' }} /> : <Eye style={{ width: '16px', height: '16px' }} />}
                   </button>
                 </div>
+
+                {detectedStation && detectedStation !== selectedStation && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                    border: '1px solid rgba(59, 130, 246, 0.35)',
+                    color: '#93C5FD',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                  }}>
+                    <span>
+                      💡 Password matches <strong>{detectedStation === 'BASE_A' ? 'Base Station A' : detectedStation === 'BASE_C' ? 'Base Station C' : 'Drone Relay'}</strong>.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedStation(detectedStation); setAuthError(null); }}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '11px', padding: '3px 8px', borderColor: '#3B82F6', color: '#93C5FD', whiteSpace: 'nowrap' }}
+                    >
+                      Switch Station
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Error Message */}
