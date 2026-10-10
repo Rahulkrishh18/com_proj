@@ -130,13 +130,7 @@ export function BaseStationCPage({ activeTab = 'messages' }: BaseStationCPagePro
     toast('Command ACK transmitted to Base Station A via Drone', 'success');
   };
 
-  const requestEmergency = (type: EventCategory, title: string, description: string, isSimulation = false) => {
-    setConfirmModal({ open: true, type, title, description, isSimulation });
-  };
-
-  const executeEmergency = async () => {
-    const { type, isSimulation } = confirmModal;
-    setConfirmModal(prev => ({ ...prev, open: false }));
+  const requestEmergency = async (type: EventCategory, title: string, _description: string, isSimulation = false) => {
     let payload = '';
     if (type === 'sos') payload = 'COMMAND SOS: Immediate evacuation order for Sector 4 zone.';
     else if (type === 'medical') payload = 'MEDEVAC Dispatch: Paramedic chopper airborne. ETA 5 minutes.';
@@ -146,8 +140,22 @@ export function BaseStationCPage({ activeTab = 'messages' }: BaseStationCPagePro
     else if (type === 'cap_landslide') payload = 'SIMULATION [CAP]: Route 9 blocked. Diverting rescue units.';
     else if (type === 'cap_tsunami') payload = 'SIMULATION [CAP]: Harbor clearance sirens active.';
     else if (type === 'message') payload = 'COMMAND DIRECTIVE: Urgent Backup Requested — Tactical reinforcements deployed.';
-    await transmit('BASE_C', 'BASE_A', type, payload, direction);
-    toast(`${isSimulation ? 'Simulation' : 'Command Alert'} dispatched`, type === 'sos' ? 'critical' : 'success');
+
+    setTxFeedback({ status: 'pending', text: `Broadcasting ${title}...` });
+    const res = await transmit('BASE_C', 'BASE_A', type, payload, direction);
+    if (res.success) {
+      setTxFeedback({ status: 'success', text: `${isSimulation ? 'Simulation' : 'Directive'} sent [${direction}]` });
+      toast(`${isSimulation ? 'Simulation' : 'Command Directive'} dispatched: ${payload}`, type === 'sos' ? 'critical' : 'success');
+    } else {
+      setTxFeedback({ status: 'idle', text: '' });
+      toast(`Failed to dispatch directive: ${res.error || 'Network error'}`, 'critical');
+    }
+  };
+
+  const executeEmergency = async () => {
+    const { type, title, isSimulation } = confirmModal;
+    setConfirmModal(prev => ({ ...prev, open: false }));
+    await requestEmergency(type, title, '', isSimulation);
   };
 
   return (

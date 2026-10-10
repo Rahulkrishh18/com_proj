@@ -89,13 +89,7 @@ export function BaseStationAPage({ activeTab = 'messages' }: BaseStationAPagePro
     }
   };
 
-  const requestEmergency = (type: EventCategory, title: string, description: string, isSimulation = false) => {
-    setConfirmModal({ open: true, type, title, description, isSimulation });
-  };
-
-  const executeEmergency = async () => {
-    const { type, isSimulation } = confirmModal;
-    setConfirmModal(prev => ({ ...prev, open: false }));
+  const requestEmergency = async (type: EventCategory, title: string, _description: string, isSimulation = false) => {
     let payload = '';
     let disasterType: string | undefined = undefined;
     if (type === 'sos') payload = 'SOS — Flash Flood breach at Sector 4 perimeter. Immediate rescue required.';
@@ -117,8 +111,22 @@ export function BaseStationAPage({ activeTab = 'messages' }: BaseStationAPagePro
       payload = 'Tsunami — Coastal inundation';
       disasterType = 'TSUNAMI';
     }
-    await transmit('BASE_A', 'BASE_C', type, payload, direction, disasterType);
-    toast(`${isSimulation ? 'Simulation' : 'Emergency'} broadcast dispatched`, type === 'sos' ? 'critical' : 'success');
+
+    setTxFeedback({ status: 'pending', text: `Broadcasting ${title}...` });
+    const res = await transmit('BASE_A', 'BASE_C', type, payload, direction, disasterType);
+    if (res.success) {
+      setTxFeedback({ status: 'success', text: `${isSimulation ? 'Simulation' : 'Emergency'} sent [${direction}]` });
+      toast(`${isSimulation ? 'Simulation' : 'Emergency'} broadcast dispatched: ${payload}`, type === 'sos' ? 'critical' : 'success');
+    } else {
+      setTxFeedback({ status: 'idle', text: '' });
+      toast(`Alert dispatch failed: ${res.error || 'Network error'}`, 'critical');
+    }
+  };
+
+  const executeEmergency = async () => {
+    const { type, title, isSimulation } = confirmModal;
+    setConfirmModal(prev => ({ ...prev, open: false }));
+    await requestEmergency(type, title, '', isSimulation);
   };
 
   return (
