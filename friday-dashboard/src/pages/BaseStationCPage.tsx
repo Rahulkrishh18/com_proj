@@ -33,6 +33,8 @@ export function BaseStationCPage({ activeTab = 'messages' }: BaseStationCPagePro
   const latestIncoming = stationC.lastReceived;
 
   const [replyMsg, setReplyMsg] = useState('');
+  const [inlineReplyMsg, setInlineReplyMsg] = useState('');
+  const [inlineCategory, setInlineCategory] = useState<EventCategory>('message');
   const [direction, setDirection] = useState<string>('South-West');
   const [category, setCategory] = useState<EventCategory>('ack');
   const [isSending, setIsSending] = useState(false);
@@ -94,6 +96,22 @@ export function BaseStationCPage({ activeTab = 'messages' }: BaseStationCPagePro
     if (res.success) {
       setTxFeedback({ status: 'success', text: `Response transmitted [${direction}] — Forwarded by Drone Relay` });
       setReplyMsg('');
+    } else {
+      setTxFeedback({ status: 'idle', text: '' });
+    }
+  };
+
+  const handleSendInlineReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inlineReplyMsg.trim()) return;
+    setIsSending(true);
+    setTxFeedback({ status: 'pending', text: 'Queueing reply packet to Base Station A...' });
+    const res = await transmit('BASE_C', 'BASE_A', inlineCategory, inlineReplyMsg.trim(), direction);
+    setIsSending(false);
+    if (res.success) {
+      setTxFeedback({ status: 'success', text: `Reply transmitted [${direction}] — Relayed to Base A` });
+      setInlineReplyMsg('');
+      toast('Reply sent to Base Station A via Drone Relay', 'success');
     } else {
       setTxFeedback({ status: 'idle', text: '' });
     }
@@ -281,26 +299,116 @@ export function BaseStationCPage({ activeTab = 'messages' }: BaseStationCPagePro
                   ))}
                 </div>
 
-                {/* Quick ACK */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingTop: '4px' }}>
-                  <button
-                    type="button"
-                    disabled={isSending}
-                    onClick={handleQuickAck}
-                    className="btn btn-primary"
-                    style={{ fontSize: '13px' }}
-                  >
-                    <CheckCircle2 style={{ width: '15px', height: '15px' }} />
-                    Transmit Verified ACK to Base A
-                  </button>
-                  <span style={{ fontSize: '12px', color: '#858585' }}>
-                    Confirms receipt and dispatches rescue teams
-                  </span>
+                {/* Direct Reply & ACK Section */}
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: '12px',
+                  paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.06)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: '#F5F5F5', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CornerDownRight style={{ width: '13px', height: '13px', color: '#C00000' }} />
+                      Direct Reply to Base Station A
+                    </label>
+                    <span style={{ fontSize: '11px', color: '#858585', fontFamily: 'var(--font-mono)' }}>
+                      TARGET: BASE A (0xFA) · VIA DRONE RELAY
+                    </span>
+                  </div>
+
+                  {/* Preset Quick Response Chips */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {[
+                      { label: 'ACK & Rescue ETA', text: 'ACK confirmed. Emergency rescue unit mobilized, ETA 12 mins. Stand by on current channel.', cat: 'ack' },
+                      { label: 'Need Backup', text: 'COMMAND DIRECTIVE: Urgent Backup Requested — Tactical reinforcements mobilized.', cat: 'message' },
+                      { label: 'Medical Supplies', text: 'LOGISTICS DIRECTIVE: Emergency Medical Supplies Dispatched — First aid & trauma kits en route.', cat: 'medical' },
+                      { label: 'Stand By', text: 'Incoming packet logged at Command HQ. Maintain radio discipline. Stand by for orders.', cat: 'message' },
+                      { label: 'Sector All Clear', text: 'Sector hazard cleared and verified. All units authorized to resume normal operations.', cat: 'all_clear' },
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setInlineReplyMsg(preset.text);
+                          setInlineCategory(preset.cat as EventCategory);
+                        }}
+                        style={{
+                          padding: '4px 9px', fontSize: '11px', borderRadius: '5px',
+                          border: '1px solid',
+                          borderColor: inlineReplyMsg === preset.text ? '#C00000' : 'rgba(255,255,255,0.1)',
+                          background: inlineReplyMsg === preset.text ? 'rgba(192, 0, 0, 0.2)' : 'rgba(255,255,255,0.04)',
+                          color: inlineReplyMsg === preset.text ? '#FFAAAA' : '#B8B8B8',
+                          cursor: 'pointer', transition: 'all 120ms ease',
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Inline Reply Input Form */}
+                  <form onSubmit={handleSendInlineReply} style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={inlineReplyMsg}
+                      onChange={e => setInlineReplyMsg(e.target.value)}
+                      placeholder="Type reply to Base Station A (e.g. Received loud and clear, standby)..."
+                      className="input"
+                      style={{ flex: 1, fontSize: '12.5px', padding: '8px 12px' }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!inlineReplyMsg.trim() || isSending}
+                      className="btn btn-primary"
+                      style={{ fontSize: '12.5px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                    >
+                      <Send style={{ width: '13px', height: '13px' }} />
+                      <span>{isSending ? 'Sending...' : 'Send Reply'}</span>
+                    </button>
+                  </form>
+
+                  {/* Quick ACK button & Feedback */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', paddingTop: '2px' }}>
+                    <button
+                      type="button"
+                      disabled={isSending}
+                      onClick={handleQuickAck}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '11.5px', padding: '5px 12px', gap: '6px', borderColor: '#4ADE80', color: '#4ADE80' }}
+                    >
+                      <CheckCircle2 style={{ width: '13px', height: '13px' }} />
+                      <span>Transmit 1-Click Verified ACK</span>
+                    </button>
+                    {txFeedback.status !== 'idle' && (
+                      <span style={{ fontSize: '11px', color: txFeedback.status === 'success' ? '#4ADE80' : '#FBBF24', fontFamily: 'var(--font-mono)' }}>
+                        {txFeedback.text}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
-              <div style={{ padding: '48px', textAlign: 'center', color: '#858585', fontSize: '13px', background: 'var(--c-well)', borderRadius: '8px', border: '1px solid var(--c-border)' }}>
-                No incoming packets in reception queue.
+              <div style={{ padding: '24px', background: 'var(--c-well)', borderRadius: '10px', border: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ color: '#858585', fontSize: '12.5px' }}>
+                  No incoming packets currently in queue. You can still transmit a direct command or message to Base Station A:
+                </div>
+                <form onSubmit={handleSendInlineReply} style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={inlineReplyMsg}
+                    onChange={e => setInlineReplyMsg(e.target.value)}
+                    placeholder="Type directive to Base Station A..."
+                    className="input"
+                    style={{ flex: 1, fontSize: '12.5px', padding: '8px 12px' }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!inlineReplyMsg.trim() || isSending}
+                    className="btn btn-primary"
+                    style={{ fontSize: '12.5px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+                  >
+                    <Send style={{ width: '13px', height: '13px' }} />
+                    <span>{isSending ? 'Sending...' : 'Send'}</span>
+                  </button>
+                </form>
               </div>
             )}
           </div>
@@ -782,6 +890,35 @@ export function BaseStationCPage({ activeTab = 'messages' }: BaseStationCPagePro
                             <span className="badge badge-ok" style={{ fontSize: '10px' }}>✓ {evt.status.replace('_', ' ').toUpperCase()}</span>
                           </div>
                         </div>
+
+                        {!isSentByC && (
+                          <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInlineReplyMsg(`RE: "${evt.message.slice(0, 24)}..." `);
+                                setInlineCategory('message');
+                                window.scrollTo({ top: 180, behavior: 'smooth' });
+                              }}
+                              className="btn btn-secondary"
+                              style={{ fontSize: '11px', padding: '4px 10px', gap: '4px' }}
+                            >
+                              <CornerDownRight style={{ width: '12px', height: '12px', color: '#FFAAAA' }} />
+                              <span>Reply</span>
+                            </button>
+                            {evt.status !== 'ack_received' && (
+                              <button
+                                type="button"
+                                onClick={() => acknowledge(evt.id)}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '11px', padding: '4px 10px', gap: '4px', borderColor: '#4ADE80' }}
+                              >
+                                <CheckCircle2 style={{ width: '12px', height: '12px', color: '#4ADE80' }} />
+                                <span>Acknowledge</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
