@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>F.R.I.D.A.Y. | Aerial Relay Mission Control & Telemetry</title>
+  
+  <!-- Premium Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  
+  <!-- FontAwesome 6 Pro-style Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="css/dashboard.css" />
+</head>
+<body>
+
+  <!-- Top Global Navigation Bar -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="brand-icon">
+        <i class="fa-solid fa-satellite-dish"></i>
+      </div>
+      <div class="brand-titles">
+        <div class="brand-main">
+          <span class="logo-text">F.R.I.D.A.Y.</span>
+          <span class="version-badge">v2.4 LTS</span>
+        </div>
+        <div class="brand-desc">Flying Relay Infrastructure for Dynamic Area</div>
+      </div>
+    </div>
+
+    <!-- Center Navigation Tabs -->
+    <nav class="header-nav">
+      <button class="nav-tab active" data-tab="overview" onclick="switchView('overview')">
+        <i class="fa-solid fa-gauge-high"></i> Mission Overview
+      </button>
+      <button class="nav-tab" data-tab="mesh" onclick="switchView('mesh')">
+        <i class="fa-solid fa-circle-nodes"></i> Mesh Network &amp; Map
+      </button>
+      <button class="nav-tab" data-tab="comms" onclick="switchView('comms')">
+        <i class="fa-solid fa-comments"></i> Tactical Comms
+      </button>
+      <button class="nav-tab" data-tab="alerts" onclick="switchView('alerts')">
+        <i class="fa-solid fa-triangle-exclamation"></i> CAP Alert Center
+      </button>
+    </nav>
+
+    <!-- Header Actions & Telemetry Clock -->
+    <div class="header-actions">
+      <div class="system-time-box">
+        <span class="time-label">UTC CLOCK</span>
+        <span class="time-val" id="utc-clock">00:00:00 UTC</span>
+      </div>
+      
+      <div class="connection-status-badge live" id="mode-status-badge">
+        <span class="pulse-indicator"></span>
+        <span id="connection-mode-label">SIMULATION MODE</span>
+      </div>
+
+      <button class="icon-action-btn" id="audio-toggle-btn" title="Toggle Audio HUD Telemetry" onclick="toggleAudio()">
+        <i class="fa-solid fa-volume-high" id="audio-icon"></i>
+      </button>
+
+      <button class="icon-action-btn" id="settings-btn" title="Hardware Connection Settings" onclick="openModal('settings-modal')">
+        <i class="fa-solid fa-gear"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Emergency Banner (Appears on Seismic Trigger or Critical SOS) -->
+  <div class="critical-alert-bar" id="critical-alert-bar">
+    <div class="alert-bar-content">
+      <div class="alert-icon-wrap">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div class="alert-text-block">
+        <div class="alert-title" id="alert-bar-title">CRITICAL SEISMIC EVENT DETECTED (GPIO 32)</div>
+        <div class="alert-msg" id="alert-bar-msg">Autonomous emergency SOS packet broadcasted from Base Station A via Airborne Drone Relay to Incident Command.</div>
+      </div>
+      <div class="alert-actions">
+        <button class="btn btn-sm btn-light" onclick="acknowledgeAlert()">
+          <i class="fa-solid fa-check"></i> Acknowledge &amp; Dismiss
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="app-layout">
+
+    <!-- KPI Summary Cards Row -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">MESH STATUS</span>
+          <span class="kpi-icon text-success"><i class="fa-solid fa-shield-halved"></i></span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-value text-success">3 / 3 <span class="kpi-unit">ONLINE</span></div>
+          <div class="kpi-trend"><i class="fa-solid fa-link"></i> Dual-Band Sync (0xFA &hArr; 0xFF)</div>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">AIRBORNE RELAY (UAV)</span>
+          <span class="kpi-icon text-cyan"><i class="fa-solid fa-helicopter"></i></span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-value" id="kpi-altitude">120 <span class="kpi-unit">m AGL</span></div>
+          <div class="kpi-trend"><i class="fa-solid fa-arrow-right-arrow-left"></i> Relayed: <span id="kpi-relayed-count">0 pkts</span></div>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">UPLINK SIGNAL (A &rarr; DRONE)</span>
+          <span class="kpi-icon text-primary"><i class="fa-solid fa-tower-broadcast"></i></span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-value" id="kpi-rssi">-68.4 <span class="kpi-unit">dBm</span></div>
+          <div class="kpi-trend"><span class="badge badge-success">SNR: <span id="kpi-snr">+9.2 dB</span></span> &bull; <span id="kpi-dist">~1.45 km</span></div>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">SEISMIC SENSOR (BASE A)</span>
+          <span class="kpi-icon text-amber" id="seismic-kpi-icon"><i class="fa-solid fa-wave-square"></i></span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-value" id="kpi-seismic-status">NORMAL</div>
+          <div class="kpi-trend text-muted"><i class="fa-solid fa-microchip"></i> Pin: GPIO 32 &bull; Accel: <span id="kpi-accel">0.04 g</span></div>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">TOTAL TRANSMISSIONS</span>
+          <span class="kpi-icon text-purple"><i class="fa-solid fa-paper-plane"></i></span>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-value" id="kpi-total-tx">0 <span class="kpi-unit">PKTS</span></div>
+          <div class="kpi-trend text-muted"><i class="fa-solid fa-clock"></i> Uptime: <span id="kpi-uptime">00:00:00</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Workspace Content (Tabbed Views) -->
+    <main class="main-content">
+      
+      <!-- VIEW 1: MISSION OVERVIEW (DEFAULT) -->
+      <div class="view-panel active" id="view-overview">
+        <div class="workspace-grid">
+          
+          <!-- LEFT COLUMN: Topology & Map (60%) -->
+          <div class="content-col col-left">
+            
+            <!-- Live Topology Flow Visualizer -->
+            <div class="panel-card">
+              <div class="panel-header">
+                <div class="panel-title">
+                  <i class="fa-solid fa-diagram-project"></i> Live Relay Mesh Topology
+                </div>
+                <div class="panel-badge badge-blue">868.0 MHz Frequency Bridge</div>
+              </div>
+
+              <div class="topology-diagram">
+                
+                <!-- Node 1: Base Station A -->
+                <div class="node-box node-a" id="node-a-card">
+                  <div class="node-header">
+                    <span class="node-status-dot green"></span>
+                    <span class="node-tag">NODE 01 &bull; GROUND</span>
+                  </div>
+                  <div class="node-body">
+                    <div class="node-icon"><i class="fa-solid fa-house-chimney-crack"></i></div>
+                    <div class="node-info">
+                      <div class="node-name">Base Station A</div>
+                      <div class="node-sub">Disaster Epicenter (Alpha)</div>
+                    </div>
+                  </div>
+                  <div class="node-footer">
+                    <div class="metric-pill">Sync: <b>0xFA</b></div>
+                    <div class="metric-pill">TX: <b>10 dBm</b></div>
+                    <div class="metric-pill" id="node-a-seismic">Vib: <b>Safe</b></div>
+                  </div>
+                </div>
+
+                <!-- Uplink Channel (A <-> Drone) -->
+                <div class="link-pipe link-up">
+                  <div class="link-track">
+                    <div class="packet-bullet forward" id="bullet-a2drone"></div>
+                    <div class="packet-bullet backward" id="bullet-drone2a"></div>
+                  </div>
+                  <div class="link-meta">
+                    <span class="meta-label">UPLINK CH (0xFA)</span>
+                    <span class="meta-val" id="link-up-metrics">-68.4 dBm | ~1.45 km</span>
+                  </div>
+                </div>
+
+                <!-- Node 2: Drone Relay -->
+                <div class="node-box node-drone" id="node-drone-card">
+                  <div class="node-header">
+                    <span class="node-status-dot cyan pulse"></span>
+                    <span class="node-tag">NODE 02 &bull; AIRBORNE</span>
+                  </div>
+                  <div class="node-body">
+                    <div class="node-icon"><i class="fa-solid fa-helicopter"></i></div>
+                    <div class="node-info">
+                      <div class="node-name">Drone Relay Unit</div>
+                      <div class="node-sub">Dual SX1262 Transceiver</div>
+                    </div>
+                  </div>
+                  <div class="node-footer">
+                    <div class="metric-pill">A&rarr;C: <b id="stat-a2c">0</b></div>
+                    <div class="metric-pill">C&rarr;A: <b id="stat-c2a">0</b></div>
+                    <div class="metric-pill">Alt: <b>120m</b></div>
+                  </div>
+                </div>
+
+                <!-- Downlink Channel (Drone <-> Base C) -->
+                <div class="link-pipe link-down">
+                  <div class="link-track">
+                    <div class="packet-bullet forward" id="bullet-drone2c"></div>
+                    <div class="packet-bullet backward" id="bullet-c2drone"></div>
+                  </div>
+                  <div class="link-meta">
+                    <span class="meta-label">DOWNLINK CH (0xFF)</span>
+                    <span class="meta-val" id="link-down-metrics">-72.1 dBm | ~1.82 km</span>
+                  </div>
+                </div>
+
+                <!-- Node 3: Base Station C -->
+                <div class="node-box node-c" id="node-c-card">
+                  <div class="node-header">
+                    <span class="node-status-dot green"></span>
+                    <span class="node-tag">NODE 03 &bull; HQ</span>
+                  </div>
+                  <div class="node-body">
+                    <div class="node-icon"><i class="fa-solid fa-building-shield"></i></div>
+                    <div class="node-info">
+                      <div class="node-name">Base Station C</div>
+                      <div class="node-sub">Incident Command (Bravo)</div>
+                    </div>
+                  </div>
+                  <div class="node-footer">
+                    <div class="metric-pill">Sync: <b>0xFF</b></div>
+                    <div class="metric-pill">ACK: <b class="text-success">Ready</b></div>
+                    <div class="metric-pill">State: <b>Online</b></div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Geographic GIS Map Card -->
+            <div class="panel-card map-panel">
+              <div class="panel-header">
+                <div class="panel-title">
+                  <i class="fa-solid fa-map-location-dot"></i> Aerial Relay Positioning &amp; Geographic GIS
+                </div>
+                <div class="panel-actions">
+                  <button class="btn btn-xs btn-outline" onclick="recenterMap()">
+                    <i class="fa-solid fa-crosshairs"></i> Recenter
+                  </button>
+                  <button class="btn btn-xs btn-outline" id="toggle-cone-btn" onclick="toggleMapCoverage()">
+                    <i class="fa-solid fa-bullseye"></i> Coverage Cone
+                  </button>
+                </div>
+              </div>
+              <div class="map-wrapper">
+                <div id="gis-map"></div>
+                <div class="map-overlay-badge">
+                  <span class="pulse-dot"></span> UAV ALTITUDE: 120m | COVERAGE RADIUS: 2.0 km
+                </div>
+              </div>
+            </div>
+
+            <!-- Signal Telemetry & Path Loss Charts -->
+            <div class="panel-card">
+              <div class="panel-header">
+                <div class="panel-title">
+                  <i class="fa-solid fa-chart-line"></i> Real-Time RF Spectrum &amp; Path Loss Telemetry
+                </div>
+                <div class="panel-legend">
+                  <span class="legend-item"><span class="legend-dot cyan"></span> RSSI (dBm)</span>
+                  <span class="legend-item"><span class="legend-dot purple"></span> SNR (dB)</span>
+                </div>
+              </div>
+              <div class="chart-wrapper">
+                <canvas id="rf-chart-canvas"></canvas>
+              </div>
+              <div class="chart-meta-row">
+                <div class="meta-item">
+                  <span class="meta-title">LOG-DISTANCE PATH LOSS FORMULA</span>
+                  <span class="meta-code">d = 10^((TxRef - RSSI)/(10 &times; n))</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-title">PATH EXPONENT (n)</span>
+                  <span class="meta-val">2.7 (Urban/Rough)</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-title">TX REF (1m)</span>
+                  <span class="meta-val">-30.0 dBm</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- RIGHT COLUMN: Tactical Terminal, Comms & CAP Triggers (40%) -->
+          <div class="content-col col-right">
+            
+            <!-- Quick Action Preset Controls -->
+            <div class="panel-card">
+              <div class="panel-header">
+                <div class="panel-title">
+                  <i class="fa-solid fa-bolt"></i> Fast Tactical Dispatch
+                </div>
+                <span class="panel-badge badge-amber">1-Click Action</span>
+              </div>
+              <div class="preset-grid">
+                <button class="btn-preset preset-sos" onclick="sendPreset('SOS - Immediate Assistance Required', 'Unknown', 'CRITICAL')">
+                  <div class="preset-icon"><i class="fa-solid fa-truck-medical"></i></div>
+                  <div class="preset-text">
+                    <span class="preset-name">SOS EMERGENCY</span>
+                    <span class="preset-sub">Priority 1 Distress</span>
+                  </div>
+                </button>
+
+                <button class="btn-preset preset-med" onclick="sendPreset('Medical Emergency - Triage Requested', 'North', 'HIGH')">
+                  <div class="preset-icon"><i class="fa-solid fa-kit-medical"></i></div>
+                  <div class="preset-text">
+                    <span class="preset-name">MEDICAL EVAC</span>
+                    <span class="preset-sub">Paramedic Request</span>
+                  </div>
+                </button>
+
+                <button class="btn-preset preset-ack" onclick="sendPreset('Message Received, Acknowledged (ACK)', 'Unknown', 'ROUTINE')">
+                  <div class="preset-icon"><i class="fa-solid fa-check-double"></i></div>
+                  <div class="preset-text">
+                    <span class="preset-name">SEND ACK</span>
+                    <span class="preset-sub">Confirmation Ping</span>
+                  </div>
+                </button>
+
+                <button class="btn-preset preset-clear" onclick="sendPreset('All Clear - Sector Stabilized', 'Unknown', 'ROUTINE')">
+                  <div class="preset-icon"><i class="fa-solid fa-shield-check"></i></div>
+                  <div class="preset-text">
+                    <span class="preset-name">ALL CLEAR</span>
+                    <span class="preset-sub">De-escalate Sector</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Seismic Accelerometer Live Monitor -->
+            <div class="panel-card">
+              <div class="panel-header">
+                <div class="panel-title">
+                  <i class="fa-solid fa-wave-square"></i> Seismic Sensor Monitor (Base A)
+                </div>
+                <button class="btn btn-xs btn-danger" onclick="triggerSeismicSimulation()">
+                  <i class="fa-solid fa-bolt"></i> Test Vibration Shock
+                </button>
+              </div>
+              <div class="seismic-container">
+                <div class="seismic-canvas-wrap">
+                  <canvas id="seismic-scope-canvas"></canvas>
+                </div>
+                <div class="seismic-status-row">
+                  <div class="seismic-stat">
+                    <span class="lbl">HARDWARE PIN</span>
+                    <span class="val">GPIO 32</span>
+                  </div>
+                  <div class="seismic-stat">
+                    <span class="lbl">SAMPLING RATE</span>
+                    <span class="val">50 Hz Continuous</span>
+                  </div>
+                  <div class="seismic-stat">
+                    <span class="lbl">THRESHOLD</span>
+                    <span class="val" id="seismic-badge-indicator"><span class="badge badge-success">ARMED &amp; SAFE</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- National CAP Disaster Simulation Suite -->
+            <div class="panel-card">
+              <div class="panel-header">
+                <div class="panel-title">
+                  <i class="fa-solid fa-radiation"></i> National CAP Disaster Alert Broadcaster
+                </div>
+                <span class="panel-badge badge-red">Emergency Broadcast</span>
+              </div>
+              <div class="cap-disaster-grid">
+                <button class="cap-card-btn cap-quake" onclick="broadcastCapEvent('Earthquake', 'Magnitude 7.2 seismic tremor registered in Sector 4')">
+                  <div class="cap-icon"><i class="fa-solid fa-mountain-sun"></i></div>
+                  <div class="cap-info">
+                    <div class="cap-type">EARTHQUAKE M7.2</div>
+                    <div class="cap-desc">Seismic Alert &bull; Severe</div>
+                  </div>
+                  <div class="cap-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                </button>
+
+                <button class="cap-card-btn cap-flood" onclick="broadcastCapEvent('Flash Flood', 'River reservoir breach detected, evacuation warning')">
+                  <div class="cap-icon"><i class="fa-solid fa-water"></i></div>
+                  <div class="cap-info">
+                    <div class="cap-type">FLASH FLOOD</div>
+                    <div class="cap-desc">Hydrology Warning &bull; Extreme</div>
+                  </div>
+                  <div class="cap-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                </button>
+
+                <button class="cap-card-btn cap-landslide" onclick="broadcastCapEvent('Landslide', 'Debris flow blocking Northern evacuation routes')">
+                  <div class="cap-icon"><i class="fa-solid fa-mountain"></i></div>
+                  <div class="cap-info">
+                    <div class="cap-type">LANDSLIDE</div>
+                    <div class="cap-desc">Terrain Slip &bull; Severe</div>
+                  </div>
+                  <div class="cap-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                </button>
+
+                <button class="cap-card-btn cap-storm" onclick="broadcastCapEvent('Super Cyclone', '140 km/h squalls approaching coastal corridor')">
+                  <div class="cap-icon"><i class="fa-solid fa-wind"></i></div>
+                  <div class="cap-info">
+                    <div class="cap-type">SUPER CYCLONE</div>
+                    <div class="cap-desc">Meteorological &bull; Extreme</div>
+                  </div>
+                  <div class="cap-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Tactical LoRa Terminal & Comms Feed -->
+            <div class="panel-card terminal-card">
+              <div class="panel-header">
+                <div class="panel-title">
+                  <i class="fa-solid fa-terminal"></i> Tactical Comms Terminal
+                </div>
+                <div class="panel-actions">
+                  <button class="btn btn-xs btn-outline" title="Export Log CSV/JSON" onclick="exportLogs()">
+                    <i class="fa-solid fa-download"></i> Export
+                  </button>
+                  <button class="btn btn-xs btn-outline" title="Clear Terminal Logs" onclick="clearLogs()">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Terminal Log Messages -->
+              <div class="terminal-feed-container" id="terminal-log-feed">
+                <!-- Dynamically rendered -->
+              </div>
+
+              <!-- Message Composer -->
+              <form class="message-composer-form" onsubmit="handleSendMessage(event)">
+                <div class="composer-top-row">
+                  <input type="text" id="composer-text" placeholder="Type tactical packet payload..." autocomplete="off" required />
+                  <select id="composer-direction" title="Target Direction">
+                    <option value="North">North (0°)</option>
+                    <option value="North-East">North-East (45°)</option>
+                    <option value="East">East (90°)</option>
+                    <option value="South-East">South-East (135°)</option>
+                    <option value="South">South (180°)</option>
+                    <option value="South-West">South-West (225°)</option>
+                    <option value="West">West (270°)</option>
+                    <option value="North-West">North-West (315°)</option>
+                    <option value="Unknown" selected>Direct / Omnidir</option>
+                  </select>
+                </div>
+                <div class="composer-bottom-row">
+                  <div class="origin-toggle">
+                    <span class="origin-label">Transmit From:</span>
+                    <select id="composer-origin">
+                      <option value="BASE_A">Base Station A (Disaster Zone)</option>
+                      <option value="BASE_C">Base Station C (Incident HQ)</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fa-solid fa-paper-plane"></i> Transmit Packet
+                  </button>
+                </div>
+              </form>
+
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VIEW 2: MESH NETWORK & MAP DEEP-DIVE -->
+      <div class="view-panel" id="view-mesh">
+        <div class="mesh-view-container">
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i class="fa-solid fa-network-wired"></i> Full Network Telemetry Matrix &amp; Hardware Diagnostics
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="telemetry-table">
+                <thead>
+                  <tr>
+                    <th>Node ID</th>
+                    <th>Role &amp; Deployment</th>
+                    <th>RF Transceiver</th>
+                    <th>Sync Word</th>
+                    <th>TX Power</th>
+                    <th>Status</th>
+                    <th>Packet Loss</th>
+                    <th>Last Heard</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><b>NODE-01</b></td>
+                    <td>Base Station A (Ground Disaster Zone)</td>
+                    <td>SX1262 LoRa (868 MHz)</td>
+                    <td><code>0xFA</code></td>
+                    <td>+10 dBm</td>
+                    <td><span class="badge badge-success">ACTIVE // TX-RX</span></td>
+                    <td>0.0%</td>
+                    <td id="node-a-last-heard">Just now</td>
+                  </tr>
+                  <tr>
+                    <td><b>NODE-02</b></td>
+                    <td>Drone Relay (Airborne Dual Transceiver)</td>
+                    <td>2x SX1262 (A-side &amp; C-side)</td>
+                    <td><code>0xFA</code> &hArr; <code>0xFF</code></td>
+                    <td>+10 dBm</td>
+                    <td><span class="badge badge-cyan">AIRBORNE RELAYING</span></td>
+                    <td>0.2%</td>
+                    <td id="node-drone-last-heard">Just now</td>
+                  </tr>
+                  <tr>
+                    <td><b>NODE-03</b></td>
+                    <td>Base Station C (Incident Command HQ)</td>
+                    <td>SX1262 LoRa (868 MHz)</td>
+                    <td><code>0xFF</code></td>
+                    <td>+10 dBm</td>
+                    <td><span class="badge badge-success">LISTENING // ACK</span></td>
+                    <td>0.0%</td>
+                    <td id="node-c-last-heard">Just now</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 3: TACTICAL COMMS LOGS -->
+      <div class="view-panel" id="view-comms">
+        <div class="comms-view-container">
+          <div class="panel-card full-height">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i class="fa-solid fa-list-check"></i> Master LoRa Transmission Audit Log
+              </div>
+              <div class="panel-actions">
+                <button class="btn btn-sm btn-primary" onclick="exportLogs()"><i class="fa-solid fa-file-export"></i> Export CSV</button>
+              </div>
+            </div>
+            <div class="audit-log-box" id="audit-log-feed"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 4: CAP ALERT CENTER -->
+      <div class="view-panel" id="view-alerts">
+        <div class="cap-view-container">
+          <div class="panel-card">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i class="fa-solid fa-bullhorn"></i> Common Alerting Protocol (CAP v1.2) Incident Manager
+              </div>
+            </div>
+            <div class="cap-builder-grid">
+              <div class="cap-builder-card">
+                <h3>Create Custom Emergency CAP Alert</h3>
+                <form onsubmit="handleCustomCapAlert(event)">
+                  <div class="form-group">
+                    <label>Event Headline</label>
+                    <input type="text" id="cap-headline" placeholder="e.g. Flash Flood Evacuation Notice" required />
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label>Urgency</label>
+                      <select id="cap-urgency">
+                        <option>Immediate</option>
+                        <option>Expected</option>
+                        <option>Future</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Severity</label>
+                      <select id="cap-severity">
+                        <option>Extreme</option>
+                        <option selected>Severe</option>
+                        <option>Moderate</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Instruction Payload</label>
+                    <textarea id="cap-instructions" rows="3" placeholder="Actionable guidance for rescue units and civilian base stations..."></textarea>
+                  </div>
+                  <button type="submit" class="btn btn-danger btn-block">
+                    <i class="fa-solid fa-tower-broadcast"></i> Broadcast CAP Alert Over LoRa Bridge
+                  </button>
+                </form>
+              </div>
+              <div class="cap-history-card">
+                <h3>Broadcasted Alerts History</h3>
+                <div class="cap-history-list" id="cap-history-list">
+                  <div class="empty-state">No national CAP alerts recorded in this session.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Hardware Connection & Settings Modal -->
+  <div class="app-modal" id="settings-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-microchip"></i> Hardware Configuration &amp; ESP32 Endpoints
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('settings-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-lead">Configure how this Mission Control Dashboard communicates with the F.R.I.D.A.Y. hardware network.</p>
+
+        <div class="form-group">
+          <label>Operating Environment</label>
+          <select id="setting-mode" onchange="toggleHardwareFields()">
+            <option value="simulation" selected>Interactive Telemetry Simulator (Demo Mode)</option>
+            <option value="esp32_live">Direct ESP32 WiFi SoftAP / LAN Bridge</option>
+          </select>
+        </div>
+
+        <div id="hardware-ip-fields" style="display: none;">
+          <div class="form-group">
+            <label>Base Station A SoftAP IP</label>
+            <input type="text" id="ip-base-a" value="http://192.168.4.1" placeholder="http://192.168.4.1" />
+          </div>
+          <div class="form-group">
+            <label>Drone Relay SoftAP IP</label>
+            <input type="text" id="ip-drone" value="http://192.168.4.1" placeholder="http://192.168.4.1" />
+          </div>
+          <div class="form-group">
+            <label>Base Station C SoftAP IP</label>
+            <input type="text" id="ip-base-c" value="http://192.168.4.1" placeholder="http://192.168.4.1" />
+          </div>
+          <div class="form-group">
+            <label>Telemetry Polling Rate (ms)</label>
+            <input type="number" id="poll-rate" value="1200" min="300" max="5000" />
+          </div>
+        </div>
+
+        <div class="firmware-guide-box">
+          <h4><i class="fa-solid fa-code"></i> ESP32 Firmware Information</h4>
+          <p>The updated Arduino / RadioLib sketches with integrated REST API endpoints (<code>/api/status</code>) are stored in the <code>firmware/</code> directory.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('settings-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSettings()">Save &amp; Apply Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <!-- App Scripts -->
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

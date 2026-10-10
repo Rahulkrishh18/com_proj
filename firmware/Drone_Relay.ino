@@ -1,0 +1,222 @@
+#include <RadioLib.h>
+#include <WiFi.h>
+#include <WebServer.h>
+
+/*
+ * F.R.I.D.A.Y. - Flying Relay Infrastructure for Dynamic Area
+ * Node: Drone Relay (Airborne Dual SX1262 Bridge)
+ * LoRa: Uplink 868.0 MHz (Sync 0xFA) <--> Downlink 868.0 MHz (Sync 0xFF)
+ */
+
+SX1262 radioUp = new Module(5, 35, 4, 34);
+#define DIO1_UP 35
+
+SX1262 radioDown = new Module(27, 21, 32, 14);
+#define DIO1_DOWN 21
+
+const char* ssid = "DRONE_RELAY";
+const char* password = "friday123";
+
+WebServer server(80);
+int relayAtoC = 0;
+int relayCtoA = 0;
+String lastMsgUp = "";
+String lastMsgDown = "";
+bool lastPinUp = false;
+bool lastPinDown = false;
+
+float txRefRSSI = -30.0;
+float pathLossN = 2.7;
+
+#define LOG_SIZE 15
+String logMsgs[LOG_SIZE];
+int logIndex = 0;
+
+void addLog(String entry) {
+  logMsgs[logIndex] = entry;
+  logIndex = (logIndex + 1) % LOG_SIZE;
+}
+
+float getDistanceKm(float rssi) {
+  float distMeters = pow(10.0, (txRefRSSI - rssi) / (10.0 * pathLossN));
+  return distMeters / 1000.0;
+}
+
+// JSON API Endpoint for Modern Mission Control Dashboard
+void handleApiStatus() {
+  String json = "{";
+  json += "\"node\":\"DRONE_RELAY\",";
+  json += "\"relayAtoC\":" + String(relayAtoC) + ",";
+  json += "\"relayCtoA\":" + String(relayCtoA) + ",";
+  json += "\"dio1_up\":" + String(digitalRead(DIO1_UP)) + ",";
+  json += "\"dio1_down\":" + String(digitalRead(DIO1_DOWN)) + ",";
+  json += "\"lastMsgUp\":\"" + lastMsgUp + "\",";
+  json += "\"lastMsgDown\":\"" + lastMsgDown + "\"";
+  json += "}";
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", json);
+}
+
+void handleRoot() {
+  bool curUp = digitalRead(DIO1_UP);
+  bool curDown = digitalRead(DIO1_DOWN);
+
+  String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'>";
+  html += "<meta http-equiv='refresh' content='1'><style>";
+  html += "body{font-family:Arial;background:#0d1117;color:#c9d1d9;padding:20px;max-width:500px;margin:auto}";
+  html += "h1{color:#58a6ff;font-size:22px}.stat{display:flex;gap:10px;margin-bottom:14px}";
+  html += ".card{flex:1;background:#161b22;padding:10px;border-radius:6px;text-align:center}";
+  html += ".card b{font-size:20px;color:#3fb950;display:block}";
+  html += ".diag{display:flex;gap:10px;margin-bottom:14px}";
+  html += ".dcard{flex:1;background:#161b22;padding:8px;border-radius:6px;text-align:center;font-size:12px}";
+  html += ".dcard b{font-size:16px;display:block}";
+  html += ".hi{color:#f85149}.lo{color:#3fb950}";
+  html += ".log{background:#161b22;padding:10px;border-radius:6px;font-size:12px;max-height:280px;overflow-y:auto}";
+  html += "p{margin:4px 0;border-bottom:1px solid #21262d;padding-bottom:4px;word-break:break-all}</style></head><body>";
+  html += "<h1>Drone Relay - Team F.R.I.D.A.Y.</h1><div class='stat'>";
+  html += "<div class='card'><b>" + String(relayAtoC) + "</b>A -&gt; C</div>";
+  html += "<div class='card'><b>" + String(relayCtoA) + "</b>C -&gt; A</div></div>";
+  html += "<div class='diag'>";
+  html += "<div class='dcard'>DIO1_UP (GPIO35)<b class='" + String(curUp ? "hi" : "lo") + "'>" + String(curUp ? "HIGH" : "LOW") + "</b></div>";
+  html += "<div class='dcard'>DIO1_DOWN (GPIO21)<b class='" + String(curDown ? "hi" : "lo") + "'>" + String(curDown ? "HIGH" : "LOW") + "</b></div>";
+  html += "</div>";
+  html += "<div class='log'><b>Relay Log:</b><br>";
+  for (int i = 0; i < LOG_SIZE; i++) {
+    int idx = (logIndex - 1 - i + LOG_SIZE) % LOG_SIZE;
+    if (logMsgs[idx].length() > 0) {
+      html += "<p>" + logMsgs[idx] + "</p>";
+    }
+  }
+  html += "</div></body></html>";
+  server.send(200, "text/html", html);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+
+  pinMode(5, OUTPUT);
+  digitalWrite(5, HIGH);
+  pinMode(27, OUTPUT);
+  digitalWrite(27, HIGH);
+  pinMode(DIO1_UP, INPUT);
+  pinMode(DIO1_DOWN, INPUT);
+  delay(100);
+
+  WiFi.softAP(ssid, password);
+  Serial.println("WiFi AP: " + String(ssid));
+  Serial.print("Open: http://");
+  Serial.println(WiFi.softAPIP());
+
+  server.on("/", handleRoot);
+  server.on("/api/status", handleApiStatus);
+  server.begin();
+
+  Serial.print("Uplink (A-side) init... ");
+  int stateUp = radioUp.begin(868.0);
+  if (stateUp == RADIOLIB_ERR_NONE) {
+    radioUp.setTCXO(1.8);
+    radioUp.setRfSwitchPins(25, 26);
+    radioUp.setOutputPower(10);
+    radioUp.setSyncWord(0xFA);
+    Serial.println("OK - sync 0xFA");
+  } else {
+    Serial.println("FAIL " + String(stateUp));
+  }
+
+  delay(200);
+
+  Serial.print("Downlink (C-side) init... ");
+  int stateDown = radioDown.begin(868.0);
+  if (stateDown == RADIOLIB_ERR_NONE) {
+    radioDown.setTCXO(1.8);
+    radioDown.setRfSwitchPins(33, 13);
+    radioDown.setOutputPower(10);
+    radioDown.setSyncWord(0xFF);
+    Serial.println("OK - sync 0xFF");
+  } else {
+    Serial.println("FAIL " + String(stateDown));
+  }
+
+  if (stateUp != RADIOLIB_ERR_NONE || stateDown != RADIOLIB_ERR_NONE) {
+    Serial.println("!!! INIT FAILED - halting, check wiring !!!");
+    while (true) {
+      delay(1000);
+      server.handleClient();
+    }
+  }
+
+  radioUp.startReceive();
+  radioDown.startReceive();
+  Serial.println("Bidirectional relay active - edge-triggered polling");
+}
+
+void handleUplinkRelay() {
+  bool curPin = digitalRead(DIO1_UP);
+
+  if (curPin && !lastPinUp) {
+    String msg;
+    int state = radioUp.readData(msg);
+    radioUp.startReceive();
+
+    if (state == RADIOLIB_ERR_NONE && msg.length() > 0 && msg != lastMsgUp) {
+      lastMsgUp = msg;
+      float rssi = radioUp.getRSSI();
+      float distKm = getDistanceKm(rssi);
+      String relayMsg = msg + " [RSSI:" + String(rssi, 1) + " ~" + String(distKm, 2) + "km]";
+
+      Serial.println("A->C RX: " + msg + " RSSI:" + String(rssi, 1));
+
+      radioDown.standby();
+      delay(10);
+      int txState = radioDown.transmit(relayMsg);
+      radioDown.startReceive();
+      bool ok = (txState == RADIOLIB_ERR_NONE);
+
+      Serial.println(ok ? "A->C TX: OK" : "A->C TX: FAIL " + String(txState));
+
+      addLog((ok ? "[A->C OK] " : "[A->C FAIL] ") + msg);
+      if (ok) relayAtoC++;
+    }
+  }
+
+  lastPinUp = curPin;
+}
+
+void handleDownlinkRelay() {
+  bool curPin = digitalRead(DIO1_DOWN);
+
+  if (curPin && !lastPinDown) {
+    String msg;
+    int state = radioDown.readData(msg);
+    radioDown.startReceive();
+
+    if (state == RADIOLIB_ERR_NONE && msg.length() > 0 && msg != lastMsgDown) {
+      lastMsgDown = msg;
+      float rssi = radioDown.getRSSI();
+      float distKm = getDistanceKm(rssi);
+      String relayMsg = msg + " [RSSI:" + String(rssi, 1) + " ~" + String(distKm, 2) + "km]";
+
+      Serial.println("C->A RX: " + msg + " RSSI:" + String(rssi, 1));
+
+      radioUp.standby();
+      delay(10);
+      int txState = radioUp.transmit(relayMsg);
+      radioUp.startReceive();
+      bool ok = (txState == RADIOLIB_ERR_NONE);
+
+      Serial.println(ok ? "C->A TX: OK" : "C->A TX: FAIL " + String(txState));
+
+      addLog((ok ? "[C->A OK] " : "[C->A FAIL] ") + msg);
+      if (ok) relayCtoA++;
+    }
+  }
+
+  lastPinDown = curPin;
+}
+
+void loop() {
+  server.handleClient();
+  handleUplinkRelay();
+  handleDownlinkRelay();
+}
