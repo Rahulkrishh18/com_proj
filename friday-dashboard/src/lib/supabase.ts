@@ -317,8 +317,10 @@ export function subscribeToCloudMessages(
 
   try {
     const supabase = getSupabaseClient();
+    // Unique channel topic to avoid collision with previously subscribed channel during hot-reload
+    const channelId = `realtime-messages-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel('public:messages')
+      .channel(channelId)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
