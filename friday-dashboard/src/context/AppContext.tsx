@@ -9,8 +9,12 @@ import {
   postMessageToDB,
   acknowledgeMessageInDB,
   subscribeToCloudMessages,
+  recordAuditEvent,
+  fetchAuditEventsFromDB,
+  subscribeToAuditEvents,
   isSupabaseConfigured,
   type CloudMessage,
+  type AuditEvent,
   type StationId,
   type MessageCategory,
 } from '../lib/supabase';
@@ -69,6 +73,7 @@ interface AppState {
   activeModal: string | null;
   selectedNodeId: NodeId | null;
   cloudMessages: CloudMessage[];
+  auditEvents: AuditEvent[];
   isCloudConnected: boolean;
 }
 
@@ -84,6 +89,8 @@ type Action =
   | { type: 'SET_CLOUD_MESSAGES'; messages: CloudMessage[] }
   | { type: 'ADD_CLOUD_MESSAGE'; message: CloudMessage }
   | { type: 'UPDATE_CLOUD_MESSAGE'; message: CloudMessage }
+  | { type: 'SET_AUDIT_EVENTS'; events: AuditEvent[] }
+  | { type: 'ADD_AUDIT_EVENT'; event: AuditEvent }
   | { type: 'ADD_EVENT'; event: TransmissionEvent }
   | { type: 'ADD_INCIDENT'; incident: EmergencyIncident }
   | { type: 'RESOLVE_INCIDENT'; id: string }
@@ -92,6 +99,12 @@ type Action =
   | { type: 'TICK_UPTIME' }
   | { type: 'REFRESH_TELEMETRY' }
   | { type: 'SET_CLOUD_STATUS'; connected: boolean };
+
+function getDefaultPageForStation(station: StationId | null): SidebarPage {
+  if (station === 'BASE_C') return 'station_c';
+  if (station === 'DRONE_RELAY') return 'drone_relay';
+  return 'station_a';
+}
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -103,7 +116,7 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         authenticatedStation: action.station,
         // Automatically default view to station dashboard on login
-        page: action.station === 'BASE_C' ? 'station_c' : 'station_a',
+        page: getDefaultPageForStation(action.station),
       };
 
     case 'TOGGLE_SIDEBAR':
@@ -224,6 +237,18 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    case 'SET_AUDIT_EVENTS':
+      return { ...state, auditEvents: action.events };
+
+    case 'ADD_AUDIT_EVENT': {
+      const exists = state.auditEvents.some(a => a.id === action.event.id);
+      if (exists) return state;
+      return {
+        ...state,
+        auditEvents: [action.event, ...state.auditEvents].slice(0, 300),
+      };
+    }
+
     case 'ADD_EVENT': {
       const ev = action.event;
       const dashboard = { ...state.dashboard };
@@ -327,7 +352,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const initialStation = (sessionStorage.getItem('friday_authenticated_station') as StationId) || null;
 
   const [state, dispatch] = useReducer(reducer, {
-    page: initialStation === 'BASE_C' ? 'station_c' : 'station_a',
+    page: getDefaultPageForStation(initialStation),
     authenticatedStation: initialStation,
     dashboard: buildInitialDemoState(),
     toasts: [],
@@ -335,6 +360,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     activeModal: null,
     selectedNodeId: null,
     cloudMessages: [],
+    auditEvents: [],
     isCloudConnected: false,
   });
 
@@ -353,25 +379,90 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => dispatch({ type: 'REMOVE_TOAST', id }), 4000);
   }, []);
 
-  const navigate = useCallback((page: SidebarPage) => {
-    dispatch({ type: 'SET_PAGE', page });
-  }, []);
+  // Enforce Station Role Authorization on page navigation
+  const navigate = useCallback((targetPage: SidebarPage) => {
+    const role = state.authenticatedStation;
+    if (!role) {
+      dispatch({ type: 'SET_PAGE', page: targetPage });
+      return;
+    }
 
-  const login = useCallback((station: StationId) => {
+    if (role === 'BASE_A') {
+      const allowedForA: SidebarPage[] = [
+        'station_a',
+        'station_a_sent',
+        'station_a_received',
+        'station_a_emergency',
+        'overview',
+      ];
+      if (!allowedForA.includes(targetPage)) {
+        toast('Access Denied: Base Station A is not authorized to access that dashboard.', 'critical');
+        dispatch({ type: 'SET_PAGE', page: 'station_a' });
+        return;
+      }
+    } else if (role === 'BASE_C') {
+      const allowedForC: SidebarPage[] = [
+        'station_c',
+        'station_c_received',
+        'station_c_replies',
+        'station_c_emergency',
+        'overview',
+      ];
+      if (!allowedForC.includes(targetPage)) {
+        toast('Access Denied: Base Station C is not authorized to access that dashboard.', 'critical');
+        dispatch({ type: 'SET_PAGE', page: 'station_c' });
+        return;
+      }
+    } else if (role === 'DRONE_RELAY') {
+      const allowedForRelay: SidebarPage[] = [
+        'drone_relay',
+        'drone_monitor',
+        'drone_ledger',
+        'drone_activity',
+        'drone_audit',
+        'overview',
+        'topology',
+        'telemetry',
+        'logs',
+        'diagnostics',
+        'settings',
+      ];
+      if (!allowedForRelay.includes(targetPage)) {
+        toast('Monitoring Restriction: Drone Relay operator cannot access Station operational controls.', 'warning');
+        dispatch({ type: 'SET_PAGE', page: 'drone_relay' });
+        return;
+      }
+    }
+
+    dispatch({ type: 'SET_PAGE', page: targetPage });
+  }, [state.authenticatedStation, toast]);
+
+  const login = useCallback(async (station: StationId) => {
     sessionStorage.setItem('friday_authenticated_station', station);
     dispatch({ type: 'SET_AUTHENTICATED_STATION', station });
-    toast(`Authenticated as ${station === 'BASE_A' ? 'Base Station Alpha (0xFA)' : 'Base Station Charlie (0xFF)'}`, 'success');
+    const stationTitle = station === 'BASE_A'
+      ? 'Base Station Alpha (0xFA)'
+      : station === 'BASE_C'
+      ? 'Base Station Charlie (0xFF)'
+      : 'Drone Relay Operator (AIRBORNE)';
+    toast(`Authenticated as ${stationTitle}`, 'success');
+    await recordAuditEvent(station, 'LOGIN_SUCCESS', `Operator authenticated as ${stationTitle}`);
   }, [toast]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const currentRole = state.authenticatedStation;
+    if (currentRole) {
+      await recordAuditEvent(currentRole, 'LOGOUT', `Operator session terminated`);
+    }
     sessionStorage.removeItem('friday_authenticated_station');
     dispatch({ type: 'SET_AUTHENTICATED_STATION', station: null });
     toast('Logged out of station session.', 'info');
-  }, [toast]);
+  }, [toast, state.authenticatedStation]);
 
-  // Initial fetch and Realtime subscription from Supabase
+  // Initial fetch and Realtime subscriptions from Supabase
   useEffect(() => {
-    let channel: ReturnType<typeof subscribeToCloudMessages> | null = null;
+    let msgChannel: ReturnType<typeof subscribeToCloudMessages> | null = null;
+    let auditChannel: ReturnType<typeof subscribeToAuditEvents> | null = null;
 
     async function initializeCloudComms() {
       if (!isSupabaseConfigured()) {
@@ -387,8 +478,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'SET_CLOUD_MESSAGES', messages: res.messages });
       }
 
-      // 2. Subscribe to Realtime inserts & updates
-      channel = subscribeToCloudMessages(
+      // 2. Fetch audit events from database
+      const auditRes = await fetchAuditEventsFromDB();
+      if (auditRes.events && auditRes.events.length > 0) {
+        dispatch({ type: 'SET_AUDIT_EVENTS', events: auditRes.events });
+      }
+
+      // 3. Subscribe to Realtime messages
+      msgChannel = subscribeToCloudMessages(
         (inserted) => {
           dispatch({ type: 'ADD_CLOUD_MESSAGE', message: inserted });
 
@@ -410,11 +507,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             dispatch({ type: 'REMOVE_PACKET_ANIMATION', id: animId2 });
           }, 2700);
 
-          // Toast alert if recipient matches current station
+          // Toast alert if recipient matches current station or drone monitoring
           const isMeRecipient = state.authenticatedStation === inserted.recipient_station;
+          const isDrone = state.authenticatedStation === 'DRONE_RELAY';
           if (isMeRecipient) {
             const prefix = inserted.category === 'SOS' ? '🚨 LIVE SOS INCOMING' : inserted.category === 'MEDICAL' ? '⚠ LIVE MEDICAL ALERT' : '📩 INCOMING COMMAND PACKET';
             toast(`${prefix}: "${inserted.message_text}"`, inserted.category === 'SOS' ? 'critical' : 'warning');
+          } else if (isDrone) {
+            toast(`Drone Relay routed packet ${inserted.id.slice(0, 8)} (${inserted.sender_station} → ${inserted.recipient_station})`, 'info');
           }
         },
         (updated) => {
@@ -424,14 +524,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         }
       );
+
+      // 4. Subscribe to Realtime audit events
+      auditChannel = subscribeToAuditEvents((insertedAudit) => {
+        dispatch({ type: 'ADD_AUDIT_EVENT', event: insertedAudit });
+      });
     }
 
     initializeCloudComms();
 
     return () => {
-      if (channel) {
-        channel.unsubscribe();
-      }
+      if (msgChannel) msgChannel.unsubscribe();
+      if (auditChannel) auditChannel.unsubscribe();
     };
   }, [toast, state.authenticatedStation]);
 
@@ -444,6 +548,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     direction?: string,
     disasterType?: string
   ): Promise<{ success: boolean; error?: string }> => {
+    // Role protection: Drone cannot impersonate sender
+    if (state.authenticatedStation === 'DRONE_RELAY') {
+      toast('Authorization Error: Drone Relay role is monitoring-only and cannot send operational messages.', 'critical');
+      return { success: false, error: 'Monitoring role cannot transmit.' };
+    }
+
     // Map internal category to Cloud MessageCategory
     let cloudCat: MessageCategory = 'NORMAL';
     if (category === 'sos') cloudCat = 'SOS';
@@ -451,8 +561,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     else if (category === 'all_clear') cloudCat = 'ALL_CLEAR';
     else if (category.startsWith('cap_') || category === 'seismic_trigger') cloudCat = 'DISASTER';
 
-    const senderStation: StationId = source === 'BASE_C' ? 'BASE_C' : 'BASE_A';
-    const recipientStation: StationId = destination === 'BASE_A' ? 'BASE_A' : 'BASE_C';
+    const senderStation: 'BASE_A' | 'BASE_C' = source === 'BASE_C' ? 'BASE_C' : 'BASE_A';
+    const recipientStation: 'BASE_A' | 'BASE_C' = destination === 'BASE_A' ? 'BASE_A' : 'BASE_C';
 
     // 1. If Supabase is configured, save directly to cloud database
     if (isSupabaseConfigured()) {
@@ -467,8 +577,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (res.error) {
         toast(`Transmission failed: ${res.error}`, 'critical');
+        await recordAuditEvent(senderStation, 'TRANSMISSION_FAILED', `Failed to transmit to ${recipientStation}: ${res.error}`);
         return { success: false, error: res.error };
       }
+
+      // Record audit event
+      const actionType = cloudCat === 'SOS'
+        ? 'EMERGENCY_SOS'
+        : cloudCat === 'MEDICAL'
+        ? 'EMERGENCY_MEDICAL'
+        : cloudCat === 'DISASTER'
+        ? 'DISASTER_ALERT'
+        : cloudCat === 'ALL_CLEAR'
+        ? 'ALL_CLEAR'
+        : senderStation === 'BASE_C' ? 'REPLY_SENT' : 'MESSAGE_SENT';
+
+      await recordAuditEvent(
+        senderStation,
+        actionType,
+        `Transmitted to ${recipientStation} (${cloudCat}): "${message.slice(0, 60)}"`,
+        res.message?.id
+      );
 
       const prefix = category === 'sos' ? '🔴 SOS BROADCAST' : category === 'medical' ? '⚠ MEDEVAC DISPATCH' : '📡 CLOUD PACKET SENT';
       toast(`${prefix}: Saved to cloud & broadcasted to ${recipientStation}`, category === 'sos' ? 'critical' : 'success');
@@ -498,23 +627,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     toast(`Local demo: Transmitted to ${destination}`, category === 'sos' ? 'critical' : 'success');
     return { success: true };
-  }, [toast]);
+  }, [toast, state.authenticatedStation]);
 
   // Acknowledge method updating database
   const acknowledge = useCallback(async (messageId: string): Promise<{ success: boolean; error?: string }> => {
+    const ackSender: StationId = state.authenticatedStation || 'BASE_C';
+    if (ackSender === 'DRONE_RELAY') {
+      toast('Monitoring Restriction: Drone Relay cannot forge acknowledgements on behalf of stations.', 'critical');
+      return { success: false, error: 'Monitoring role cannot acknowledge.' };
+    }
+
     if (isSupabaseConfigured()) {
       const res = await acknowledgeMessageInDB(messageId);
       if (res.error) {
         toast(`ACK error: ${res.error}`, 'critical');
+        await recordAuditEvent(ackSender, 'ACK_FAILED', `Failed ACK for message #${messageId.slice(0, 8)}: ${res.error}`, messageId);
         return { success: false, error: res.error };
       }
+
+      await recordAuditEvent(ackSender, 'ACK_SENT', `Receipt verified and ACK emitted for packet #${messageId.slice(0, 8)}`, messageId);
       toast('Verified ACK registered in cloud database.', 'success');
       return { success: true };
     }
 
     toast('ACK acknowledged in local session.', 'success');
     return { success: true };
-  }, [toast]);
+  }, [toast, state.authenticatedStation]);
 
   return (
     <AppContext.Provider value={{

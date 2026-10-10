@@ -24,7 +24,8 @@ export function setSupabaseAnonKey(key: string, persistToLocal = true) {
 }
 
 // ─── Database Types ────────────────────────────────────────────────
-export type StationId = 'BASE_A' | 'BASE_C';
+export type StationId = 'BASE_A' | 'BASE_C' | 'DRONE_RELAY';
+export type StationRole = StationId;
 export type MessageCategory = 'NORMAL' | 'SOS' | 'MEDICAL' | 'ALL_CLEAR' | 'DISASTER';
 export type DeliveryStatus = 'CLOUD_DELIVERED' | 'HARDWARE_PENDING';
 export type AckStatus = 'UNACKNOWLEDGED' | 'ACKNOWLEDGED';
@@ -32,8 +33,8 @@ export type AckStatus = 'UNACKNOWLEDGED' | 'ACKNOWLEDGED';
 export interface CloudMessage {
   id: string;
   conversation_id: string;
-  sender_station: StationId;
-  recipient_station: StationId;
+  sender_station: 'BASE_A' | 'BASE_C';
+  recipient_station: 'BASE_A' | 'BASE_C';
   message_text: string;
   category: MessageCategory;
   disaster_type?: string | null;
@@ -41,6 +42,15 @@ export interface CloudMessage {
   delivery_status: DeliveryStatus;
   ack_status: AckStatus;
   ack_at?: string | null;
+  created_at: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  station_role: StationId | 'SYSTEM';
+  action_type: string;
+  details: string;
+  message_id?: string | null;
   created_at: string;
 }
 
@@ -129,11 +139,12 @@ export async function checkDatabaseSetup(): Promise<{
 }
 
 /**
- * Complete initial system setup: store salted password hashes for Base A and Base C.
+ * Complete initial system setup: store salted password hashes for Base A, Base C, and optionally Drone Relay.
  */
 export async function completeSystemSetupInDB(
   stationAPassword: string,
-  stationCPassword: string
+  stationCPassword: string,
+  droneRelayPassword?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = getSupabaseClient();
@@ -165,6 +176,20 @@ export async function completeSystemSetupInDB(
     });
     if (errC) throw new Error(`Station C setup failed: ${errC.message}`);
 
+    // Optionally Upsert Drone Relay
+    if (droneRelayPassword) {
+      const saltRelay = generateSalt();
+      const hashRelay = await hashPasswordWithSalt(droneRelayPassword, saltRelay);
+      const { error: errRelay } = await supabase.from('station_credentials').upsert({
+        station_id: 'DRONE_RELAY',
+        station_name: 'Drone Relay Station',
+        password_hash: hashRelay,
+        salt: saltRelay,
+        updated_at: new Date().toISOString(),
+      });
+      if (errRelay) throw new Error(`Drone Relay setup failed: ${errRelay.message}`);
+    }
+
     // Mark setup as completed
     const { error: errSetup } = await supabase.from('system_setup').upsert({
       id: 'SYSTEM_CONFIG',
@@ -174,12 +199,66 @@ export async function completeSystemSetupInDB(
     });
     if (errSetup) throw new Error(`System setup flag failed: ${errSetup.message}`);
 
+    // Record setup audit event
+    await recordAuditEvent('SYSTEM', 'SETUP_COMPLETED', 'Initial station credentials and system setup initialized');
+
     return { success: true };
   } catch (err: unknown) {
     return {
       success: false,
       error: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+/**
+ * Provision or rotate credentials specifically for DRONE_RELAY.
+ */
+export async function provisionDroneRelayCredentials(
+  droneRelayPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    const saltRelay = generateSalt();
+    const hashRelay = await hashPasswordWithSalt(droneRelayPassword, saltRelay);
+
+    const { error } = await supabase.from('station_credentials').upsert({
+      station_id: 'DRONE_RELAY',
+      station_name: 'Drone Relay Monitoring Station',
+      password_hash: hashRelay,
+      salt: saltRelay,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) throw error;
+
+    await recordAuditEvent('SYSTEM', 'RELAY_PROVISIONED', 'Drone Relay operator credentials provisioned');
+    return { success: true };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Check if DRONE_RELAY credentials exist in database.
+ */
+export async function checkDroneRelayProvisioned(): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('station_credentials')
+      .select('station_id')
+      .eq('station_id', 'DRONE_RELAY')
+      .maybeSingle();
+
+    if (error || !data) return false;
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -343,3 +422,99 @@ export function subscribeToCloudMessages(
     return null;
   }
 }
+
+/**
+ * Record an audit event into public.audit_events (Append-only).
+ */
+export async function recordAuditEvent(
+  stationRole: StationId | 'SYSTEM',
+  actionType: string,
+  details: string,
+  messageId?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured()) return { success: false, error: 'Database not configured' };
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('audit_events').insert({
+      station_role: stationRole,
+      action_type: actionType,
+      details,
+      message_id: messageId || null,
+      created_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      // If table doesn't exist yet, don't crash, just log warning
+      console.warn('Could not persist audit event to DB:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    console.warn('Error recording audit event:', err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Fetch all audit events, newest first.
+ */
+export async function fetchAuditEventsFromDB(): Promise<{
+  events: AuditEvent[];
+  error?: string;
+}> {
+  if (!isSupabaseConfigured()) return { events: [] };
+
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('audit_events')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(300);
+
+    if (error) {
+      console.warn('Could not fetch audit events:', error.message);
+      return { events: [], error: error.message };
+    }
+    return { events: (data || []) as AuditEvent[] };
+  } catch (err: unknown) {
+    return {
+      events: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Subscribe to realtime inserts on public.audit_events.
+ */
+export function subscribeToAuditEvents(
+  onInsert: (event: AuditEvent) => void
+): RealtimeChannel | null {
+  if (!isSupabaseConfigured()) return null;
+
+  try {
+    const supabase = getSupabaseClient();
+    const channelId = `realtime-audit-${Math.random().toString(36).substring(2, 9)}`;
+    const channel = supabase
+      .channel(channelId)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'audit_events' },
+        (payload: any) => {
+          onInsert(payload.new as AuditEvent);
+        }
+      )
+      .subscribe();
+
+    return channel;
+  } catch (err) {
+    console.error('Failed to attach Supabase Realtime channel for audit_events:', err);
+    return null;
+  }
+}
+

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   RadioTower, Shield, Key, Eye, EyeOff, Copy, Check, AlertTriangle,
-  RefreshCw, Database, Lock, Server
+  RefreshCw, Database, Lock, Server, ShieldAlert
 } from 'lucide-react';
 import {
   isSupabaseConfigured,
@@ -10,6 +10,8 @@ import {
   checkDatabaseSetup,
   completeSystemSetupInDB,
   verifyStationLoginDB,
+  checkDroneRelayProvisioned,
+  provisionDroneRelayCredentials,
   SUPABASE_PROJECT_URL,
   type StationId,
 } from '../../lib/supabase';
@@ -30,10 +32,14 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
   // First-time generated credentials state
   const [generatedPassA, setGeneratedPassA] = useState('');
   const [generatedPassC, setGeneratedPassC] = useState('');
+  const [generatedPassRelay, setGeneratedPassRelay] = useState('');
   const [copiedA, setCopiedA] = useState(false);
   const [copiedC, setCopiedC] = useState(false);
+  const [copiedRelay, setCopiedRelay] = useState(false);
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [provisionError, setProvisionError] = useState<string | null>(null);
+  const [isRelayProvisioned, setIsRelayProvisioned] = useState(true);
+  const [showRelayModal, setShowRelayModal] = useState(false);
 
   // Login form state
   const [selectedStation, setSelectedStation] = useState<StationId>('BASE_A');
@@ -63,6 +69,14 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
           // Generate fresh passwords ready for provisioning
           setGeneratedPassA(generateSecurePassword('ALPHA'));
           setGeneratedPassC(generateSecurePassword('CHARLIE'));
+          setGeneratedPassRelay(generateSecurePassword('RELAY'));
+        } else {
+          // Check if Drone Relay is provisioned
+          const relayDone = await checkDroneRelayProvisioned();
+          setIsRelayProvisioned(relayDone);
+          if (!relayDone) {
+            setGeneratedPassRelay(generateSecurePassword('RELAY'));
+          }
         }
       }
     }
@@ -82,13 +96,29 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
   async function handleConfirmSetup() {
     setIsProvisioning(true);
     setProvisionError(null);
-    const res = await completeSystemSetupInDB(generatedPassA, generatedPassC);
+    const res = await completeSystemSetupInDB(generatedPassA, generatedPassC, generatedPassRelay);
     setIsProvisioning(false);
 
     if (!res.success) {
       setProvisionError(res.error || 'Failed to initialize credentials in database.');
     } else {
       setIsSetupDone(true);
+      setIsRelayProvisioned(true);
+    }
+  }
+
+  // Handle dedicated Drone Relay provisioning
+  async function handleProvisionRelay() {
+    setIsProvisioning(true);
+    setProvisionError(null);
+    const res = await provisionDroneRelayCredentials(generatedPassRelay);
+    setIsProvisioning(false);
+
+    if (!res.success) {
+      setProvisionError(res.error || 'Failed to provision Drone Relay in database. (Check if migration_drone_relay.sql was run)');
+    } else {
+      setIsRelayProvisioned(true);
+      setShowRelayModal(false);
     }
   }
 
@@ -116,14 +146,17 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
   }
 
   // Copy helper
-  function copyToClipboard(text: string, type: 'A' | 'C') {
+  function copyToClipboard(text: string, type: 'A' | 'C' | 'RELAY') {
     navigator.clipboard.writeText(text);
     if (type === 'A') {
       setCopiedA(true);
       setTimeout(() => setCopiedA(false), 2500);
-    } else {
+    } else if (type === 'C') {
       setCopiedC(true);
       setTimeout(() => setCopiedC(false), 2500);
+    } else {
+      setCopiedRelay(true);
+      setTimeout(() => setCopiedRelay(false), 2500);
     }
   }
 
@@ -344,6 +377,36 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
               </div>
             </div>
 
+            {/* Drone Relay Password Box */}
+            <div style={{
+              background: '#1A1A1A',
+              border: '1px solid #2D2D2D',
+              borderRadius: '8px',
+              padding: '14px 16px',
+              marginBottom: '20px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#FFAAAA' }}>
+                  Drone Relay Monitoring Operator Password
+                </span>
+                <span style={{ fontSize: '10px', color: '#777', fontFamily: 'var(--font-mono)' }}>AIRBORNE MONITOR</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <code style={{ fontSize: '14px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#F5F5F5', letterSpacing: '0.04em' }}>
+                  {generatedPassRelay}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(generatedPassRelay, 'RELAY')}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 12px', fontSize: '11px', flexShrink: 0 }}
+                >
+                  {copiedRelay ? <Check style={{ width: '12px', height: '12px', color: '#4ADE80' }} /> : <Copy style={{ width: '12px', height: '12px' }} />}
+                  {copiedRelay ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+
             {provisionError && (
               <div style={{
                 padding: '12px',
@@ -374,33 +437,96 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
         {/* ─── CASE 3: Standard Station Login ─── */}
         {hasAnonKey && isSetupDone && (
           <div style={{ padding: '32px' }}>
+            {/* Optional Drone Relay Provisioning Alert if not yet provisioned */}
+            {!isRelayProvisioned && (
+              <div style={{
+                marginBottom: '20px',
+                padding: '14px 16px',
+                borderRadius: '8px',
+                background: 'rgba(128, 0, 0, 0.15)',
+                border: '1px solid rgba(192, 0, 0, 0.4)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ShieldAlert style={{ width: '16px', height: '16px', color: '#FF6B6B' }} />
+                    <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#F5F5F5' }}>
+                      Drone Relay Role Not Provisioned Yet
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowRelayModal(!showRelayModal)}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '11px', padding: '4px 8px' }}
+                  >
+                    {showRelayModal ? 'Dismiss' : 'Provision Relay'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '11.5px', color: '#B8B8B8', margin: 0, lineHeight: 1.4 }}>
+                  To enable third-station unified monitoring, generate and save the Drone Relay password.
+                </p>
+
+                {showRelayModal && (
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+                      <code style={{ fontSize: '13px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#FFAAAA' }}>
+                        {generatedPassRelay}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(generatedPassRelay, 'RELAY')}
+                        className="btn btn-secondary"
+                        style={{ padding: '4px 8px', fontSize: '11px' }}
+                      >
+                        {copiedRelay ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    {provisionError && (
+                      <div style={{ fontSize: '11.5px', color: '#FF6B6B', marginBottom: '8px' }}>
+                        {provisionError}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      disabled={isProvisioning}
+                      onClick={handleProvisionRelay}
+                      className="btn btn-primary"
+                      style={{ width: '100%', fontSize: '12px', padding: '8px' }}
+                    >
+                      {isProvisioning ? 'Saving Hash...' : 'Save Relay Hash to Database'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Station Selection */}
               <div>
                 <label className="form-label" style={{ fontSize: '12px', color: '#B8B8B8', marginBottom: '8px' }}>
-                  Target Station Dashboard
+                  Target Station Role & Dashboard
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                   <button
                     type="button"
                     onClick={() => { setSelectedStation('BASE_A'); setAuthError(null); }}
                     style={{
-                      padding: '12px 10px',
+                      padding: '10px 8px',
                       borderRadius: '8px',
                       border: '1px solid',
                       borderColor: selectedStation === 'BASE_A' ? '#C00000' : '#2D2D2D',
-                      background: selectedStation === 'BASE_A' ? 'rgba(192, 0, 0, 0.12)' : '#181818',
+                      background: selectedStation === 'BASE_A' ? 'rgba(192, 0, 0, 0.14)' : '#181818',
                       color: selectedStation === 'BASE_A' ? '#F5F5F5' : '#888',
                       cursor: 'pointer',
                       textAlign: 'center',
                       transition: 'all 120ms ease',
                     }}
                   >
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: selectedStation === 'BASE_A' ? '#FFF' : '#B8B8B8' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: selectedStation === 'BASE_A' ? '#FFF' : '#B8B8B8' }}>
                       Base Station A
                     </div>
-                    <div style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', marginTop: '2px', opacity: 0.8 }}>
-                      SYNC: 0xFA (Field)
+                    <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', marginTop: '2px', opacity: 0.8 }}>
+                      0xFA · Field
                     </div>
                   </button>
 
@@ -408,22 +534,45 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
                     type="button"
                     onClick={() => { setSelectedStation('BASE_C'); setAuthError(null); }}
                     style={{
-                      padding: '12px 10px',
+                      padding: '10px 8px',
                       borderRadius: '8px',
                       border: '1px solid',
                       borderColor: selectedStation === 'BASE_C' ? '#C00000' : '#2D2D2D',
-                      background: selectedStation === 'BASE_C' ? 'rgba(192, 0, 0, 0.12)' : '#181818',
+                      background: selectedStation === 'BASE_C' ? 'rgba(192, 0, 0, 0.14)' : '#181818',
                       color: selectedStation === 'BASE_C' ? '#F5F5F5' : '#888',
                       cursor: 'pointer',
                       textAlign: 'center',
                       transition: 'all 120ms ease',
                     }}
                   >
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: selectedStation === 'BASE_C' ? '#FFF' : '#B8B8B8' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: selectedStation === 'BASE_C' ? '#FFF' : '#B8B8B8' }}>
                       Base Station C
                     </div>
-                    <div style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', marginTop: '2px', opacity: 0.8 }}>
-                      SYNC: 0xFF (HQ)
+                    <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', marginTop: '2px', opacity: 0.8 }}>
+                      0xFF · HQ
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedStation('DRONE_RELAY'); setAuthError(null); }}
+                    style={{
+                      padding: '10px 8px',
+                      borderRadius: '8px',
+                      border: '1px solid',
+                      borderColor: selectedStation === 'DRONE_RELAY' ? '#C00000' : '#2D2D2D',
+                      background: selectedStation === 'DRONE_RELAY' ? 'rgba(192, 0, 0, 0.14)' : '#181818',
+                      color: selectedStation === 'DRONE_RELAY' ? '#F5F5F5' : '#888',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      transition: 'all 120ms ease',
+                    }}
+                  >
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: selectedStation === 'DRONE_RELAY' ? '#FFF' : '#FFAAAA' }}>
+                      Drone Relay
+                    </div>
+                    <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', marginTop: '2px', opacity: 0.8 }}>
+                      AIRBORNE
                     </div>
                   </button>
                 </div>
@@ -433,7 +582,11 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
               <div className="form-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label className="form-label" style={{ fontSize: '12px', color: '#B8B8B8' }}>
-                    {selectedStation === 'BASE_A' ? 'Base Station A Password' : 'Base Station C Password'}
+                    {selectedStation === 'BASE_A'
+                      ? 'Base Station A Password'
+                      : selectedStation === 'BASE_C'
+                      ? 'Base Station C Password'
+                      : 'Drone Relay Operator Password'}
                   </label>
                 </div>
 
@@ -500,7 +653,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
                 ) : (
                   <>
                     <Key style={{ width: '14px', height: '14px' }} />
-                    Authenticate & Enter Station {selectedStation === 'BASE_A' ? 'A' : 'C'}
+                    Authenticate & Enter {selectedStation === 'BASE_A' ? 'Station A' : selectedStation === 'BASE_C' ? 'Station C' : 'Drone Relay'}
                   </>
                 )}
               </button>
@@ -523,6 +676,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
                 onClick={() => {
                   setGeneratedPassA(generateSecurePassword('ALPHA'));
                   setGeneratedPassC(generateSecurePassword('CHARLIE'));
+                  setGeneratedPassRelay(generateSecurePassword('RELAY'));
                   setIsSetupDone(false);
                 }}
                 style={{

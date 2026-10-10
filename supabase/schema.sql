@@ -40,17 +40,32 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 3. Create Station Credentials Table
 CREATE TABLE IF NOT EXISTS public.station_credentials (
-    station_id TEXT PRIMARY KEY CHECK (station_id IN ('BASE_A', 'BASE_C')),
+    station_id TEXT PRIMARY KEY CHECK (station_id IN ('BASE_A', 'BASE_C', 'DRONE_RELAY')),
     station_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     salt TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 4. Enable Row Level Security (RLS)
+-- 4. Create Audit Events Table (Append-only activity ledger)
+CREATE TABLE IF NOT EXISTS public.audit_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    station_role TEXT NOT NULL CHECK (station_role IN ('BASE_A', 'BASE_C', 'DRONE_RELAY', 'SYSTEM')),
+    action_type TEXT NOT NULL,
+    details TEXT NOT NULL,
+    message_id UUID NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON public.audit_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_role ON public.audit_events(station_role);
+CREATE INDEX IF NOT EXISTS idx_audit_events_action ON public.audit_events(action_type);
+
+-- 5. Enable Row Level Security (RLS)
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_setup ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.station_credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY;
 
 -- Permissive policies for Demo presentation via Supabase anon key
 -- Messages policies
@@ -83,7 +98,14 @@ CREATE POLICY "Public can insert credentials" ON public.station_credentials FOR 
 DROP POLICY IF EXISTS "Public can update credentials" ON public.station_credentials;
 CREATE POLICY "Public can update credentials" ON public.station_credentials FOR UPDATE USING (true);
 
--- 5. Enable Supabase Realtime for Messages
+-- Audit events policies (Append-only: select and insert permitted, update/delete denied)
+DROP POLICY IF EXISTS "Public can view audit events" ON public.audit_events;
+CREATE POLICY "Public can view audit events" ON public.audit_events FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public can insert audit events" ON public.audit_events;
+CREATE POLICY "Public can insert audit events" ON public.audit_events FOR INSERT WITH CHECK (true);
+
+-- 6. Enable Supabase Realtime for Messages and Audit Events
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -91,5 +113,12 @@ BEGIN
     WHERE pubname = 'supabase_realtime' AND tablename = 'messages'
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'audit_events'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.audit_events;
   END IF;
 END $$;

@@ -7,7 +7,7 @@
  * Generate a cryptographically secure random password with high entropy.
  * Format: FRIDAY-[STATION]-[RANDOM4]-[RANDOM4]
  */
-export function generateSecurePassword(stationTag: 'ALPHA' | 'CHARLIE'): string {
+export function generateSecurePassword(stationTag: 'ALPHA' | 'CHARLIE' | 'RELAY'): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid ambiguous chars 0/O, 1/I
   const randomBytes = new Uint8Array(8);
   window.crypto.getRandomValues(randomBytes);

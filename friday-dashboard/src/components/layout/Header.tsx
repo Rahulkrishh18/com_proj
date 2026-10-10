@@ -3,16 +3,26 @@ import { useApp } from '../../context/AppContext';
 import { ChevronRight, Clock, Activity, LogOut } from 'lucide-react';
 
 const PAGE_META: Record<string, { title: string; breadcrumb: string }> = {
-  station_a:   { title: 'Base Station A',       breadcrumb: 'Station Control' },
-  drone_relay: { title: 'Drone Relay',           breadcrumb: 'Station Control' },
-  station_c:   { title: 'Base Station C',        breadcrumb: 'Station Control' },
-  overview:    { title: 'Mission Overview',      breadcrumb: 'Mission Control' },
-  topology:    { title: 'Network Topology',      breadcrumb: 'Mission Control' },
-  telemetry:   { title: 'Relay Telemetry',       breadcrumb: 'Mission Control' },
-  emergency:   { title: 'Emergency Operations',  breadcrumb: 'Mission Control' },
-  logs:        { title: 'Communications Log',    breadcrumb: 'Mission Control' },
-  diagnostics: { title: 'Diagnostics',           breadcrumb: 'Mission Control' },
-  settings:    { title: 'Settings',              breadcrumb: 'Mission Control' },
+  station_a:           { title: 'Base Station A (Messages & Dispatch)',  breadcrumb: 'Station Alpha' },
+  station_a_sent:      { title: 'Station A — Sent Messages',             breadcrumb: 'Station Alpha' },
+  station_a_received:  { title: 'Station A — Received Messages',         breadcrumb: 'Station Alpha' },
+  station_a_emergency: { title: 'Station A — Emergency Alerts',          breadcrumb: 'Station Alpha' },
+  station_c:           { title: 'Base Station C (Messages & Replies)',   breadcrumb: 'Station Charlie' },
+  station_c_received:  { title: 'Station C — Incoming from Alpha',       breadcrumb: 'Station Charlie' },
+  station_c_replies:   { title: 'Station C — Sent Replies',              breadcrumb: 'Station Charlie' },
+  station_c_emergency: { title: 'Station C — Emergency Directives',      breadcrumb: 'Station Charlie' },
+  drone_relay:         { title: 'Drone Relay — Network Overview',        breadcrumb: 'Relay Command' },
+  drone_monitor:       { title: 'Drone Relay — Live Message Monitor',    breadcrumb: 'Relay Command' },
+  drone_ledger:        { title: 'Drone Relay — Unified Message Ledger',  breadcrumb: 'Relay Command' },
+  drone_activity:      { title: 'Drone Relay — Station Activity Timeline', breadcrumb: 'Relay Command' },
+  drone_audit:         { title: 'Drone Relay — Immutable Audit Log',     breadcrumb: 'Relay Command' },
+  overview:            { title: 'Mission Overview',                      breadcrumb: 'Mission Control' },
+  topology:            { title: 'Network Topology',                      breadcrumb: 'Mission Control' },
+  telemetry:           { title: 'Relay Telemetry',                       breadcrumb: 'Mission Control' },
+  emergency:           { title: 'Emergency Operations',                  breadcrumb: 'Mission Control' },
+  logs:                { title: 'Communications Log',                    breadcrumb: 'Mission Control' },
+  diagnostics:         { title: 'Diagnostics',                           breadcrumb: 'Mission Control' },
+  settings:            { title: 'Settings',                              breadcrumb: 'Mission Control' },
 };
 
 function formatUptime(seconds: number): string {
@@ -23,7 +33,7 @@ function formatUptime(seconds: number): string {
 }
 
 export function Header() {
-  const { state } = useApp();
+  const { state, logout } = useApp();
   const { page } = state;
 
   const [now, setNow] = useState(new Date());
@@ -63,15 +73,31 @@ export function Header() {
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
               padding: '5px 12px', borderRadius: '6px',
-              background: state.authenticatedStation === 'BASE_A' ? 'rgba(192, 0, 0, 0.15)' : 'rgba(128, 0, 0, 0.25)',
+              background: state.authenticatedStation === 'BASE_A'
+                ? 'rgba(192, 0, 0, 0.15)'
+                : state.authenticatedStation === 'BASE_C'
+                ? 'rgba(128, 0, 0, 0.25)'
+                : 'rgba(255, 107, 107, 0.15)',
               border: '1px solid',
-              borderColor: state.authenticatedStation === 'BASE_A' ? '#C00000' : '#800000',
+              borderColor: state.authenticatedStation === 'BASE_A'
+                ? '#C00000'
+                : state.authenticatedStation === 'BASE_C'
+                ? '#800000'
+                : '#FF6B6B',
               fontSize: '11px', fontWeight: 700, fontFamily: 'var(--font-mono)',
-              color: state.authenticatedStation === 'BASE_A' ? '#FFAAAA' : '#FFCCCC',
+              color: state.authenticatedStation === 'BASE_A'
+                ? '#FFAAAA'
+                : state.authenticatedStation === 'BASE_C'
+                ? '#FFCCCC'
+                : '#FFFFFF',
             }}
           >
             <span className="status-dot online" />
-            {state.authenticatedStation === 'BASE_A' ? 'STATION A (0xFA)' : 'STATION C (0xFF)'}
+            {state.authenticatedStation === 'BASE_A'
+              ? 'STATION A (0xFA)'
+              : state.authenticatedStation === 'BASE_C'
+              ? 'STATION C (0xFF)'
+              : 'DRONE RELAY MONITOR'}
           </div>
         )}
 
@@ -127,7 +153,7 @@ export function Header() {
         {state.authenticatedStation && (
           <button
             type="button"
-            onClick={useApp().logout}
+            onClick={logout}
             title="Logout of Station"
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',

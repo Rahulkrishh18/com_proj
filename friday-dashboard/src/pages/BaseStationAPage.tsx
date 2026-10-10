@@ -12,8 +12,12 @@ import {
 
 const DIRECTIONS = ['North', 'North-East', 'East', 'South-East', 'South', 'South-West', 'West', 'North-West'] as const;
 
-export function BaseStationAPage() {
-  const { state, transmit, toast } = useApp();
+interface BaseStationAPageProps {
+  activeTab?: 'messages' | 'sent' | 'received' | 'emergency';
+}
+
+export function BaseStationAPage({ activeTab = 'messages' }: BaseStationAPageProps) {
+  const { state, transmit, acknowledge, toast } = useApp();
   const { stations, events, telemetryHistory } = state.dashboard;
   const stationA = stations.BASE_A;
   const telemetry = stationA.telemetry;
@@ -29,6 +33,17 @@ export function BaseStationAPage() {
   }>({ open: false, type: 'sos', title: '', description: '', isSimulation: false });
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [historyTab, setHistoryTab] = useState<'all' | 'sent' | 'received' | 'emergency' | 'ack'>(
+    activeTab === 'sent' ? 'sent' : activeTab === 'received' ? 'received' : activeTab === 'emergency' ? 'emergency' : 'all'
+  );
+
+  React.useEffect(() => {
+    if (activeTab === 'sent') setHistoryTab('sent');
+    else if (activeTab === 'received') setHistoryTab('received');
+    else if (activeTab === 'emergency') setHistoryTab('emergency');
+    else if (activeTab === 'messages') setHistoryTab('all');
+  }, [activeTab]);
+
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'thread' | 'table'>('thread');
 
@@ -37,13 +52,26 @@ export function BaseStationAPage() {
     [events]
   );
 
+  // Overview metrics required for Section 2
+  const totalSent = useMemo(() => stationEvents.filter(e => e.sourceNodeId === 'BASE_A').length, [stationEvents]);
+  const totalReceived = useMemo(() => stationEvents.filter(e => e.sourceNodeId === 'BASE_C').length, [stationEvents]);
+  const unackSent = useMemo(() => stationEvents.filter(e => e.sourceNodeId === 'BASE_A' && e.status !== 'ack_received').length, [stationEvents]);
+  const totalEmergency = useMemo(() => stationEvents.filter(e => e.sourceNodeId === 'BASE_A' && (e.category === 'sos' || e.category === 'medical' || e.category.startsWith('cap_'))).length, [stationEvents]);
+
   const filteredEvents = useMemo(() =>
     stationEvents.filter(e => {
       const matchesSearch = e.message.toLowerCase().includes(searchTerm.toLowerCase()) || e.id.toLowerCase().includes(searchTerm.toLowerCase());
+
+      let matchesTab = true;
+      if (historyTab === 'sent') matchesTab = e.sourceNodeId === 'BASE_A';
+      else if (historyTab === 'received') matchesTab = e.sourceNodeId === 'BASE_C';
+      else if (historyTab === 'emergency') matchesTab = e.category === 'sos' || e.category === 'medical' || e.category.startsWith('cap_');
+      else if (historyTab === 'ack') matchesTab = e.category === 'ack' || e.status === 'ack_received';
+
       const matchesCat = categoryFilter === 'all' || e.category === categoryFilter;
-      return matchesSearch && matchesCat;
+      return matchesSearch && matchesTab && matchesCat;
     }),
-    [stationEvents, searchTerm, categoryFilter]
+    [stationEvents, searchTerm, historyTab, categoryFilter]
   );
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -137,48 +165,49 @@ export function BaseStationAPage() {
         </div>
 
         {/* Summary Strip */}
-        <div className="station-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="station-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           <div className="strip-item">
             <div className="strip-label">
               <Send style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
-              Latest Transmission
+              Sent by Station A
             </div>
-            <div className="strip-value" style={{ fontFamily: 'var(--font-sans)', fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {stationA.lastTransmitted?.message ?? 'SOS — Flash Flood breach at Sector 4'}
+            <div className="strip-value" style={{ fontSize: '20px', fontFamily: 'var(--font-mono)' }}>
+              {totalSent}
             </div>
-            <div className="strip-sub">
-              {stationA.lastTransmitted
-                ? `${stationA.lastTransmitted.timestamp.toLocaleTimeString()} · ${stationA.lastTransmitted.status}`
-                : '14:01:06 · ack_received'}
-            </div>
+            <div className="strip-sub">Transmitted to Base C</div>
           </div>
 
           <div className="strip-item">
             <div className="strip-label">
               <Download style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
-              Latest Reply Received
+              Received from Station C
             </div>
-            <div className="strip-value" style={{ fontFamily: 'var(--font-sans)', fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {stationA.lastReceived?.message ?? 'ACK: SOS confirmed by Command HQ'}
+            <div className="strip-value" style={{ fontSize: '20px', fontFamily: 'var(--font-mono)' }}>
+              {totalReceived}
             </div>
-            <div className="strip-sub">
-              {stationA.lastReceived
-                ? `From Base C · ${stationA.lastReceived.timestamp.toLocaleTimeString()}`
-                : 'From Base C · 14:01:13'}
-            </div>
+            <div className="strip-sub">Replies from Command HQ</div>
           </div>
 
           <div className="strip-item">
             <div className="strip-label">
-              <BarChart2 style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
-              Uplink RSSI
+              <Clock style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
+              Unacknowledged Sent
             </div>
-            <div className="strip-value" style={{ fontSize: '18px' }}>
-              {telemetry ? `${telemetry.rssiDbm} dBm` : '−75.3 dBm'}
+            <div className="strip-value" style={{ fontSize: '20px', fontFamily: 'var(--font-mono)', color: unackSent > 0 ? '#FBBF24' : '#4ADE80' }}>
+              {unackSent}
             </div>
-            <div className="strip-sub">
-              Est. range: ~{telemetry ? telemetry.estimatedDistanceKm.toFixed(2) : '0.05'} km
+            <div className="strip-sub">Awaiting Base C ACK</div>
+          </div>
+
+          <div className="strip-item">
+            <div className="strip-label">
+              <AlertOctagon style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
+              Emergency Dispatches
             </div>
+            <div className="strip-value" style={{ fontSize: '20px', fontFamily: 'var(--font-mono)', color: totalEmergency > 0 ? '#FF6B6B' : '#B8B8B8' }}>
+              {totalEmergency}
+            </div>
+            <div className="strip-sub">SOS / Medical / Disaster</div>
           </div>
         </div>
       </div>
@@ -510,7 +539,20 @@ export function BaseStationAPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div className="tab-toggle">
+              {(['all', 'sent', 'received', 'emergency', 'ack'] as const).map(tab => (
+                <button
+                  key={tab}
+                  className={`tab-toggle-btn ${historyTab === tab ? 'active' : ''}`}
+                  onClick={() => setHistoryTab(tab)}
+                  style={{ textTransform: 'capitalize' }}
+                >
+                  {tab === 'all' ? 'All' : tab === 'sent' ? 'Sent by A' : tab === 'received' ? 'Received from C' : tab === 'emergency' ? 'Emergency' : 'ACKs'}
+                </button>
+              ))}
+            </div>
+
             <div className="tab-toggle">
               <button className={`tab-toggle-btn ${viewMode === 'thread' ? 'active' : ''}`} onClick={() => setViewMode('thread')}>
                 Thread
@@ -524,11 +566,11 @@ export function BaseStationAPage() {
               <Search style={{ width: '13px', height: '13px', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#858585' }} />
               <input
                 type="text"
-                placeholder="Search messages..."
+                placeholder="Search..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="input"
-                style={{ paddingLeft: '32px', width: '200px', fontSize: '12.5px', padding: '8px 12px 8px 32px' }}
+                style={{ paddingLeft: '32px', width: '160px', fontSize: '12.5px', padding: '8px 12px 8px 32px' }}
               />
             </div>
 
@@ -592,6 +634,20 @@ export function BaseStationAPage() {
                             <span className="badge badge-ok" style={{ fontSize: '10px' }}>✓ {evt.status.replace('_', ' ').toUpperCase()}</span>
                           </div>
                         </div>
+
+                        {!isSentByA && evt.status !== 'ack_received' && (
+                          <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              onClick={() => acknowledge(evt.id)}
+                              className="btn btn-secondary"
+                              style={{ fontSize: '11px', padding: '4px 10px', gap: '4px', borderColor: 'var(--c-accent-dark)' }}
+                            >
+                              <CheckCircle2 style={{ width: '12px', height: '12px', color: '#4ADE80' }} />
+                              <span>Acknowledge Receipt</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

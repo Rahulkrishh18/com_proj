@@ -21,7 +21,11 @@ const QUICK_PRESETS = [
   { label: 'Sector All Clear', text: 'Sector hazard cleared and verified. All units authorized to resume normal operations.', category: 'all_clear' as EventCategory },
 ];
 
-export function BaseStationCPage() {
+interface BaseStationCPageProps {
+  activeTab?: 'messages' | 'received' | 'replies' | 'emergency';
+}
+
+export function BaseStationCPage({ activeTab = 'messages' }: BaseStationCPageProps) {
   const { state, transmit, acknowledge, toast } = useApp();
   const { stations, events, telemetryHistory } = state.dashboard;
   const stationC = stations.BASE_C;
@@ -39,6 +43,17 @@ export function BaseStationCPage() {
   }>({ open: false, type: 'sos', title: '', description: '', isSimulation: false });
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [historyTab, setHistoryTab] = useState<'all' | 'received' | 'replies' | 'emergency' | 'ack'>(
+    activeTab === 'received' ? 'received' : activeTab === 'replies' ? 'replies' : activeTab === 'emergency' ? 'emergency' : 'all'
+  );
+
+  React.useEffect(() => {
+    if (activeTab === 'received') setHistoryTab('received');
+    else if (activeTab === 'replies') setHistoryTab('replies');
+    else if (activeTab === 'emergency') setHistoryTab('emergency');
+    else if (activeTab === 'messages') setHistoryTab('all');
+  }, [activeTab]);
+
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'thread' | 'table'>('thread');
 
@@ -47,13 +62,26 @@ export function BaseStationCPage() {
     [events]
   );
 
+  // Overview metrics required for Section 3
+  const totalReceivedFromA = useMemo(() => stationEvents.filter(e => e.sourceNodeId === 'BASE_A').length, [stationEvents]);
+  const totalSentToA = useMemo(() => stationEvents.filter(e => e.sourceNodeId === 'BASE_C').length, [stationEvents]);
+  const unackIncoming = useMemo(() => stationEvents.filter(e => e.sourceNodeId === 'BASE_A' && e.status !== 'ack_received').length, [stationEvents]);
+  const emergencyReceived = useMemo(() => stationEvents.filter(e => e.sourceNodeId === 'BASE_A' && (e.category === 'sos' || e.category === 'medical' || e.category.startsWith('cap_'))).length, [stationEvents]);
+
   const filteredEvents = useMemo(() =>
     stationEvents.filter(e => {
       const matchesSearch = e.message.toLowerCase().includes(searchTerm.toLowerCase()) || e.id.toLowerCase().includes(searchTerm.toLowerCase());
+
+      let matchesTab = true;
+      if (historyTab === 'received') matchesTab = e.sourceNodeId === 'BASE_A';
+      else if (historyTab === 'replies') matchesTab = e.sourceNodeId === 'BASE_C';
+      else if (historyTab === 'emergency') matchesTab = e.category === 'sos' || e.category === 'medical' || e.category.startsWith('cap_');
+      else if (historyTab === 'ack') matchesTab = e.category === 'ack' || e.status === 'ack_received';
+
       const matchesCat = categoryFilter === 'all' || e.category === categoryFilter;
-      return matchesSearch && matchesCat;
+      return matchesSearch && matchesTab && matchesCat;
     }),
-    [stationEvents, searchTerm, categoryFilter]
+    [stationEvents, searchTerm, historyTab, categoryFilter]
   );
 
   const handleSendReply = async (e: React.FormEvent) => {
@@ -148,46 +176,49 @@ export function BaseStationCPage() {
         </div>
 
         {/* Summary Strip */}
-        <div className="station-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="station-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           <div className="strip-item">
             <div className="strip-label">
               <Inbox style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
-              Latest Incoming Alert
+              Received from Alpha
             </div>
-            <div className="strip-value" style={{ fontFamily: 'var(--font-sans)', fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {latestIncoming?.message ?? 'SOS — Flash Flood breach at Sector 4'}
+            <div className="strip-value" style={{ fontSize: '20px', fontFamily: 'var(--font-mono)' }}>
+              {totalReceivedFromA}
             </div>
-            <div className="strip-sub">
-              {latestIncoming ? `From Base A · ${latestIncoming.timestamp.toLocaleTimeString()}` : 'From Base A · 14:01:06'}
-            </div>
+            <div className="strip-sub">Field telemetry & alerts</div>
           </div>
 
           <div className="strip-item">
             <div className="strip-label">
               <Send style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
-              Last Command Dispatch
+              Sent to Alpha
             </div>
-            <div className="strip-value" style={{ fontFamily: 'var(--font-sans)', fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {stationC.lastTransmitted?.message ?? 'ACK: SOS confirmed by Command HQ'}
+            <div className="strip-value" style={{ fontSize: '20px', fontFamily: 'var(--font-mono)' }}>
+              {totalSentToA}
             </div>
-            <div className="strip-sub">
-              {stationC.lastTransmitted
-                ? `${stationC.lastTransmitted.timestamp.toLocaleTimeString()} · Delivered`
-                : '14:01:13 · Delivered'}
-            </div>
+            <div className="strip-sub">Directives & replies</div>
           </div>
 
           <div className="strip-item">
             <div className="strip-label">
-              <BarChart2 style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
-              Downlink RSSI
+              <Clock style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
+              Unacknowledged Incoming
             </div>
-            <div className="strip-value" style={{ fontSize: '18px' }}>
-              {telemetry ? `${telemetry.rssiDbm} dBm` : '−76.8 dBm'}
+            <div className="strip-value" style={{ fontSize: '20px', fontFamily: 'var(--font-mono)', color: unackIncoming > 0 ? '#FBBF24' : '#4ADE80' }}>
+              {unackIncoming}
             </div>
-            <div className="strip-sub">
-              Est. range: ~{telemetry ? telemetry.estimatedDistanceKm.toFixed(2) : '1.45'} km
+            <div className="strip-sub">Pending HQ verification</div>
+          </div>
+
+          <div className="strip-item">
+            <div className="strip-label">
+              <AlertOctagon style={{ width: '10px', height: '10px', display: 'inline', marginRight: '4px' }} />
+              Emergency Received
             </div>
+            <div className="strip-value" style={{ fontSize: '20px', fontFamily: 'var(--font-mono)', color: emergencyReceived > 0 ? '#FF6B6B' : '#B8B8B8' }}>
+              {emergencyReceived}
+            </div>
+            <div className="strip-sub">SOS / Medical / Disaster</div>
           </div>
         </div>
       </div>
@@ -679,7 +710,20 @@ export function BaseStationCPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div className="tab-toggle">
+              {(['all', 'received', 'replies', 'emergency', 'ack'] as const).map(tab => (
+                <button
+                  key={tab}
+                  className={`tab-toggle-btn ${historyTab === tab ? 'active' : ''}`}
+                  onClick={() => setHistoryTab(tab)}
+                  style={{ textTransform: 'capitalize' }}
+                >
+                  {tab === 'all' ? 'All' : tab === 'received' ? 'Received from A' : tab === 'replies' ? 'Replies Sent by C' : tab === 'emergency' ? 'Emergency' : 'ACKs'}
+                </button>
+              ))}
+            </div>
+
             <div className="tab-toggle">
               <button className={`tab-toggle-btn ${viewMode === 'thread' ? 'active' : ''}`} onClick={() => setViewMode('thread')}>Thread</button>
               <button className={`tab-toggle-btn ${viewMode === 'table' ? 'active' : ''}`} onClick={() => setViewMode('table')}>Table</button>
@@ -687,8 +731,8 @@ export function BaseStationCPage() {
 
             <div style={{ position: 'relative' }}>
               <Search style={{ width: '13px', height: '13px', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#858585' }} />
-              <input type="text" placeholder="Search ledger..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="input"
-                style={{ paddingLeft: '32px', width: '200px', fontSize: '12.5px', padding: '8px 12px 8px 32px' }} />
+              <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="input"
+                style={{ paddingLeft: '32px', width: '160px', fontSize: '12.5px', padding: '8px 12px 8px 32px' }} />
             </div>
 
             <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="select"

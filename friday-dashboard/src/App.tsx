@@ -38,9 +38,22 @@ function MainApp() {
       <div className="app-main">
         <Header />
         <main className="app-content">
-          {page === 'station_a' && <BaseStationAPage />}
-          {page === 'drone_relay' && <DroneRelayPage />}
-          {page === 'station_c' && <BaseStationCPage />}
+          {page === 'station_a' && <BaseStationAPage activeTab="messages" />}
+          {page === 'station_a_sent' && <BaseStationAPage activeTab="sent" />}
+          {page === 'station_a_received' && <BaseStationAPage activeTab="received" />}
+          {page === 'station_a_emergency' && <BaseStationAPage activeTab="emergency" />}
+
+          {page === 'station_c' && <BaseStationCPage activeTab="messages" />}
+          {page === 'station_c_received' && <BaseStationCPage activeTab="received" />}
+          {page === 'station_c_replies' && <BaseStationCPage activeTab="replies" />}
+          {page === 'station_c_emergency' && <BaseStationCPage activeTab="emergency" />}
+
+          {page === 'drone_relay' && <DroneRelayPage activeTab="overview" />}
+          {page === 'drone_monitor' && <DroneRelayPage activeTab="monitor" />}
+          {page === 'drone_ledger' && <DroneRelayPage activeTab="ledger" />}
+          {page === 'drone_activity' && <DroneRelayPage activeTab="activity" />}
+          {page === 'drone_audit' && <DroneRelayPage activeTab="audit" />}
+
           {page === 'overview' && <OverviewPage />}
           {page === 'topology' && <TopologyPage />}
           {page === 'telemetry' && <TelemetryPage />}
